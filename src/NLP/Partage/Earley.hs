@@ -12,12 +12,12 @@ module NLP.Partage.Earley
 -- $earley
 , recognize
 , recognizeFrom
-, parse
+-- , parse
 , earley
 -- ** With automata precompiled
 , recognizeAuto
 , recognizeFromAuto
-, parseAuto
+-- , parseAuto
 , earleyAuto
 -- ** Automaton
 , Auto
@@ -26,7 +26,7 @@ module NLP.Partage.Earley
 -- * Parsing trace (hypergraph)
 , Hype (..)
 -- ** Extracting parsed trees
-, parsedTrees
+-- , parsedTrees
 -- ** Stats
 , hyperNodesNum
 , hyperEdgesNum

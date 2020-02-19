@@ -28,8 +28,8 @@ module NLP.Partage.DAG
 -- ** Predicates
 , isRoot
 , isLeaf
-, isFoot
-, isSpine
+-- , isFoot
+-- , isSpine
 -- ** Querying
 , label
 , value
@@ -140,12 +140,6 @@ lookup :: DID -> DAG a b -> Maybe (Node a b)
 lookup i dag = M.lookup i (nodeMap dag)
 
 
--- -- | Insert the node to the DAG.
--- insert :: DID -> Node a b -> DAG a b -> DAG a b
--- insert i n dag = dag
---     {nodeMap = M.insert i n (nodeMap dag)}
-
-
 -- | Retrieve the label of the DAG node.
 label :: DID -> DAG a b -> Maybe a
 label i dag = nodeLabel <$> lookup i dag
@@ -173,26 +167,26 @@ isRoot :: DID -> DAG a b -> Bool
 isRoot i dag = S.member i (rootSet dag)
 
 
--- | A function which tells whether the given node is a spine node.
--- The function employs memoization once it is supplied with its first
--- argument (the grammar DAG).
-isSpine :: DAG (O.Node n t) w -> DID -> Bool
-isSpine dag =
-    spine
-  where
-    spine = Memo.wrap DID unDID Memo.integral spine'
-    spine' i
-        | isFoot i dag = True
-        | otherwise    = or . map spine . children i $ dag
+-- -- | A function which tells whether the given node is a spine node.
+-- -- The function employs memoization once it is supplied with its first
+-- -- argument (the grammar DAG).
+-- isSpine :: DAG (O.Node n t) w -> DID -> Bool
+-- isSpine dag =
+--     spine
+--   where
+--     spine = Memo.wrap DID unDID Memo.integral spine'
+--     spine' i
+--         | isFoot i dag = True
+--         | otherwise    = or . map spine . children i $ dag
 
 
--- | Is it a foot node?
-isFoot :: DID -> DAG (O.Node n t) w -> Bool
-isFoot i dag = case lookup i dag of
-    Nothing -> False
-    Just n  -> case nodeLabel n of
-        O.Foot _  -> True
-        _         -> False
+-- -- | Is it a foot node?
+-- isFoot :: DID -> DAG (O.Node n t) w -> Bool
+-- isFoot i dag = case lookup i dag of
+--     Nothing -> False
+--     Just n  -> case nodeLabel n of
+--         O.Foot _  -> True
+--         _         -> False
 
 
 -- | Check whether the given node is a leaf.

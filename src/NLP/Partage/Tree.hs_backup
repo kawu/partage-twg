@@ -16,7 +16,8 @@ module NLP.Partage.Tree
 
 -- * Auxiliary tree
 , AuxTree (..)
--- ** Path
+
+-- * Path
 , Path
 , follow
 ) where
@@ -57,22 +58,6 @@ toWord t = case t of
 -- leaves
 project :: Tree a b -> [b]
 project = toWord
-
-
--- -- | Show a tree given the showing functions for label values.
--- showTree :: (a -> String) -> (b -> String) -> Tree a b -> String
--- showTree f g = unlines . go
---   where
---     go t = case t of
---         INode{..}   -> ("INode " ++ f labelI)
---             : map ("  " ++) (concatMap go subTrees)
---         FNode{..}   -> ["FNode " ++ g labelF]
---
---
--- -- | Like `showTree`, but using the default `Show` instances
--- -- to present label values.
--- showTree' :: (Show a, Show b) => Tree a b -> String
--- showTree' = showTree show show
 
 
 ---------------------------------------------------------------------

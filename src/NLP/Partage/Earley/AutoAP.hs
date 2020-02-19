@@ -20,12 +20,12 @@ module NLP.Partage.Earley.AutoAP
 -- ** From a factorized grammar
 , recognize
 , recognizeFrom
-, parse
+-- , parse
 , earley
 -- ** With automata precompiled
 , recognizeAuto
 , recognizeFromAuto
-, parseAuto
+-- , parseAuto
 , earleyAuto
 -- ** Automaton
 , Auto
@@ -34,7 +34,7 @@ module NLP.Partage.Earley.AutoAP
 -- * Parsing trace (hypergraph)
 , Hype (..)
 -- ** Extracting parsed trees
-, parsedTrees
+-- , parsedTrees
 -- ** Stats
 , hyperNodesNum
 , hyperEdgesNum
@@ -87,7 +87,7 @@ import qualified NLP.Partage.Auto as A
 import qualified NLP.Partage.Auto.Set   as AS
 import qualified NLP.Partage.Auto.DAWG  as D
 import qualified NLP.Partage.Tree.Other as O
-import qualified NLP.Partage.Tree       as T
+-- import qualified NLP.Partage.Tree       as T
 
 import           NLP.Partage.Earley.Base hiding (nonTerm)
 import qualified NLP.Partage.Earley.Base as Base
@@ -804,159 +804,159 @@ trySubst p = void $ P.runListT $ do
 --------------------------------------------------
 
 
--- | `tryAdjoinInit p q':
--- * `p' is a completed state (regular or auxiliary)
--- * `q' not completed and expects a *real* foot
-tryAdjoinInit :: (SOrd n, SOrd t) => Passive n t -> Earley n t ()
-tryAdjoinInit p = void $ P.runListT $ do
-#ifdef DebugOn
-    begTime <- lift . lift $ Time.getCurrentTime
-#endif
-    let pDID = p ^. dagID
-        pSpan = p ^. spanP
-    -- the underlying dag grammar
-    dag <- RWS.gets (gramDAG . automat)
-    footMap <- RWS.gets (footDID  . automat)
-    -- make sure that the corresponding rule is either regular or
-    -- intermediate auxiliary ((<=) used as implication here)
-    -- guard $ auxiliary pSpan <= not (topLevel pLab)
-    -- guard $ auxiliary pSpan <= not (DAG.isRoot pDID dag)
-    guard $ auxiliary pSpan <= not (isRoot pDID)
-    -- what is the symbol in the p's DAG node?
-    footNT <- some (nonTerm' pDID dag)
---     footNT <- case pDID of
---         Left rootNT -> return rootNT
---         Right did   -> some (nonTerm' =<< DAG.label did dag)
-    -- what is the corresponding foot DAG ID?
-    footID <- each . S.toList . maybe S.empty id $ M.lookup footNT footMap
-    -- find all active items which expect a foot with the given
-    -- symbol and which end where `p` begins
-    -- let foot = AuxFoot $ nonTerm pLab
-    q <- expectEnd footID (getL beg pSpan)
-    -- follow the foot
-    j <- follow (getL state q) footID
-    -- construct the resultant state
-    let q' = setL state j
-           . setL (spanA >>> end) (pSpan ^. end)
-           . setL (spanA >>> gap) (Just
-                ( pSpan ^. beg
-                , pSpan ^. end ))
-           $ q
-    -- push the resulting state into the waiting queue
-    lift $ pushInduced q' $ Foot q p -- -- $ nonTerm foot
-#ifdef DebugOn
-    -- print logging information
-    hype <- RWS.get
-    lift . lift $ do
-        endTime <- Time.getCurrentTime
-        putStr "[A]  " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
-        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
-#endif
-
-
---------------------------------------------------
--- INTERNAL ADJOIN
---------------------------------------------------
-
-
--- | `tryAdjoinCont p q':
--- * `p' is a completed, auxiliary state
--- * `q' not completed and expects a *dummy* foot
-tryAdjoinCont :: (SOrd n, SOrd t) => Passive n t -> Earley n t ()
-tryAdjoinCont p = void $ P.runListT $ do
-#ifdef DebugOn
-    begTime <- lift . lift $ Time.getCurrentTime
-#endif
-    let pDID = p ^. dagID
-        pSpan = p ^. spanP
-    -- the underlying dag grammar
-    -- dag <- RWS.gets (gramDAG . automat)
-    -- make sure the label is not top-level (internal spine
-    -- non-terminal)
-    -- guard . not $ topLevel pLab
-    -- guard . not $ DAG.isRoot pDID dag
-    -- guard . not $ isRoot pDID
-    did <- some $ case pDID of
-        Left _rootNT -> Nothing
-        Right did -> Just did
-    -- make sure that `p' is an auxiliary item
-    guard . auxiliary $ pSpan
-    -- find all rules which expect a spine non-terminal provided
-    -- by `p' and which end where `p' begins
-    q <- expectEnd did (pSpan ^. beg)
-    -- follow the spine non-terminal
-    j <- follow (q ^. state) did
-    -- construct the resulting state; the span of the gap of the
-    -- inner state `p' is copied to the outer state based on `q'
-    let q' = setL state j
-           . setL (spanA >>> end) (pSpan ^. end)
-           . setL (spanA >>> gap) (pSpan ^. gap)
-           $ q
-    -- push the resulting state into the waiting queue
-    lift $ pushInduced q' $ Subst p q
-#ifdef DebugOn
-    -- logging info
-    hype <- RWS.get
-    lift . lift $ do
-        endTime <- Time.getCurrentTime
-        putStr "[B]  " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
-        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
-#endif
-
-
---------------------------------------------------
--- ROOT ADJOIN
---------------------------------------------------
-
-
--- | Adjoin a fully-parsed auxiliary state `p` to a partially parsed
--- tree represented by a fully parsed rule/state `q`.
-tryAdjoinTerm :: (SOrd t, SOrd n) => Passive n t -> Earley n t ()
-tryAdjoinTerm q = void $ P.runListT $ do
-#ifdef DebugOn
-    begTime <- lift . lift $ Time.getCurrentTime
-#endif
-    -- let qLab = q ^. label
-    let qDID = q ^. dagID
-        qSpan = q ^. spanP
-    -- the underlying dag grammar
-    dag <- RWS.gets (gramDAG . automat)
-    -- make sure the label is top-level
-    -- guard $ topLevel qLab
-    guard $ isRoot qDID
-    -- make sure that it is an auxiliary item (by definition only
-    -- auxiliary states have gaps)
-    (gapBeg, gapEnd) <- some $ qSpan ^. gap
-    -- take all passive items with a given span and a given
-    -- root non-terminal (IDs irrelevant)
-    qNonTerm <- some (nonTerm' qDID dag)
-    p <- rootSpan qNonTerm (gapBeg, gapEnd)
-#ifdef NoAdjunctionRestriction
-    let changeAdjState = id
-#else
-    -- make sure that node represented by `p` was not yet adjoined to
-    guard . not $ getL isAdjoinedTo p
-    let changeAdjState = setL isAdjoinedTo True
-#endif
-    -- construct the resulting item
-    let p' = setL (spanP >>> beg) (qSpan ^. beg)
-           . setL (spanP >>> end) (qSpan ^. end)
-           . changeAdjState
-           $ p
-    lift $ pushPassive p' $ Adjoin q p
-#ifdef DebugOn
-    hype <- RWS.get
-    lift . lift $ do
-        endTime <- Time.getCurrentTime
-        putStr "[C]  " >> printPassive q hype
-        putStr "  +  " >> printPassive p hype
-        putStr "  :  " >> printPassive p' hype
-        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
-#endif
+-- -- | `tryAdjoinInit p q':
+-- -- * `p' is a completed state (regular or auxiliary)
+-- -- * `q' not completed and expects a *real* foot
+-- tryAdjoinInit :: (SOrd n, SOrd t) => Passive n t -> Earley n t ()
+-- tryAdjoinInit p = void $ P.runListT $ do
+-- #ifdef DebugOn
+--     begTime <- lift . lift $ Time.getCurrentTime
+-- #endif
+--     let pDID = p ^. dagID
+--         pSpan = p ^. spanP
+--     -- the underlying dag grammar
+--     dag <- RWS.gets (gramDAG . automat)
+--     footMap <- RWS.gets (footDID  . automat)
+--     -- make sure that the corresponding rule is either regular or
+--     -- intermediate auxiliary ((<=) used as implication here)
+--     -- guard $ auxiliary pSpan <= not (topLevel pLab)
+--     -- guard $ auxiliary pSpan <= not (DAG.isRoot pDID dag)
+--     guard $ auxiliary pSpan <= not (isRoot pDID)
+--     -- what is the symbol in the p's DAG node?
+--     footNT <- some (nonTerm' pDID dag)
+-- --     footNT <- case pDID of
+-- --         Left rootNT -> return rootNT
+-- --         Right did   -> some (nonTerm' =<< DAG.label did dag)
+--     -- what is the corresponding foot DAG ID?
+--     footID <- each . S.toList . maybe S.empty id $ M.lookup footNT footMap
+--     -- find all active items which expect a foot with the given
+--     -- symbol and which end where `p` begins
+--     -- let foot = AuxFoot $ nonTerm pLab
+--     q <- expectEnd footID (getL beg pSpan)
+--     -- follow the foot
+--     j <- follow (getL state q) footID
+--     -- construct the resultant state
+--     let q' = setL state j
+--            . setL (spanA >>> end) (pSpan ^. end)
+--            . setL (spanA >>> gap) (Just
+--                 ( pSpan ^. beg
+--                 , pSpan ^. end ))
+--            $ q
+--     -- push the resulting state into the waiting queue
+--     lift $ pushInduced q' $ Foot q p -- -- $ nonTerm foot
+-- #ifdef DebugOn
+--     -- print logging information
+--     hype <- RWS.get
+--     lift . lift $ do
+--         endTime <- Time.getCurrentTime
+--         putStr "[A]  " >> printPassive p hype
+--         putStr "  +  " >> printActive q
+--         putStr "  :  " >> printActive q'
+--         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+-- #endif
+-- 
+-- 
+-- --------------------------------------------------
+-- -- INTERNAL ADJOIN
+-- --------------------------------------------------
+-- 
+-- 
+-- -- | `tryAdjoinCont p q':
+-- -- * `p' is a completed, auxiliary state
+-- -- * `q' not completed and expects a *dummy* foot
+-- tryAdjoinCont :: (SOrd n, SOrd t) => Passive n t -> Earley n t ()
+-- tryAdjoinCont p = void $ P.runListT $ do
+-- #ifdef DebugOn
+--     begTime <- lift . lift $ Time.getCurrentTime
+-- #endif
+--     let pDID = p ^. dagID
+--         pSpan = p ^. spanP
+--     -- the underlying dag grammar
+--     -- dag <- RWS.gets (gramDAG . automat)
+--     -- make sure the label is not top-level (internal spine
+--     -- non-terminal)
+--     -- guard . not $ topLevel pLab
+--     -- guard . not $ DAG.isRoot pDID dag
+--     -- guard . not $ isRoot pDID
+--     did <- some $ case pDID of
+--         Left _rootNT -> Nothing
+--         Right did -> Just did
+--     -- make sure that `p' is an auxiliary item
+--     guard . auxiliary $ pSpan
+--     -- find all rules which expect a spine non-terminal provided
+--     -- by `p' and which end where `p' begins
+--     q <- expectEnd did (pSpan ^. beg)
+--     -- follow the spine non-terminal
+--     j <- follow (q ^. state) did
+--     -- construct the resulting state; the span of the gap of the
+--     -- inner state `p' is copied to the outer state based on `q'
+--     let q' = setL state j
+--            . setL (spanA >>> end) (pSpan ^. end)
+--            . setL (spanA >>> gap) (pSpan ^. gap)
+--            $ q
+--     -- push the resulting state into the waiting queue
+--     lift $ pushInduced q' $ Subst p q
+-- #ifdef DebugOn
+--     -- logging info
+--     hype <- RWS.get
+--     lift . lift $ do
+--         endTime <- Time.getCurrentTime
+--         putStr "[B]  " >> printPassive p hype
+--         putStr "  +  " >> printActive q
+--         putStr "  :  " >> printActive q'
+--         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+-- #endif
+-- 
+-- 
+-- --------------------------------------------------
+-- -- ROOT ADJOIN
+-- --------------------------------------------------
+-- 
+-- 
+-- -- | Adjoin a fully-parsed auxiliary state `p` to a partially parsed
+-- -- tree represented by a fully parsed rule/state `q`.
+-- tryAdjoinTerm :: (SOrd t, SOrd n) => Passive n t -> Earley n t ()
+-- tryAdjoinTerm q = void $ P.runListT $ do
+-- #ifdef DebugOn
+--     begTime <- lift . lift $ Time.getCurrentTime
+-- #endif
+--     -- let qLab = q ^. label
+--     let qDID = q ^. dagID
+--         qSpan = q ^. spanP
+--     -- the underlying dag grammar
+--     dag <- RWS.gets (gramDAG . automat)
+--     -- make sure the label is top-level
+--     -- guard $ topLevel qLab
+--     guard $ isRoot qDID
+--     -- make sure that it is an auxiliary item (by definition only
+--     -- auxiliary states have gaps)
+--     (gapBeg, gapEnd) <- some $ qSpan ^. gap
+--     -- take all passive items with a given span and a given
+--     -- root non-terminal (IDs irrelevant)
+--     qNonTerm <- some (nonTerm' qDID dag)
+--     p <- rootSpan qNonTerm (gapBeg, gapEnd)
+-- #ifdef NoAdjunctionRestriction
+--     let changeAdjState = id
+-- #else
+--     -- make sure that node represented by `p` was not yet adjoined to
+--     guard . not $ getL isAdjoinedTo p
+--     let changeAdjState = setL isAdjoinedTo True
+-- #endif
+--     -- construct the resulting item
+--     let p' = setL (spanP >>> beg) (qSpan ^. beg)
+--            . setL (spanP >>> end) (qSpan ^. end)
+--            . changeAdjState
+--            $ p
+--     lift $ pushPassive p' $ Adjoin q p
+-- #ifdef DebugOn
+--     hype <- RWS.get
+--     lift . lift $ do
+--         endTime <- Time.getCurrentTime
+--         putStr "[C]  " >> printPassive q hype
+--         putStr "  +  " >> printPassive p hype
+--         putStr "  :  " >> printPassive p' hype
+--         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+-- #endif
 
 
 --------------------------------------------------
@@ -1054,9 +1054,9 @@ step
 step (ItemP p :-> e) = do
     mapM_ ($ p)
       [ trySubst
-      , tryAdjoinInit
-      , tryAdjoinCont
-      , tryAdjoinTerm
+--       , tryAdjoinInit
+--       , tryAdjoinCont
+--       , tryAdjoinTerm
       , trySisterAdjoin
       ]
     savePassive p $ prioTrav e
@@ -1074,85 +1074,85 @@ step (ItemA p :-> e) = do
 ---------------------------
 
 
--- | Extract the set of parsed trees obtained on the given input
--- sentence.  Should be run on the result of the earley parser.
-parsedTrees
-    :: forall n t. (Ord n, Ord t)
-    => Hype n t     -- ^ Final state of the earley parser
-    -> S.Set n      -- ^ The start symbol set
-    -> Int          -- ^ Length of the input sentence
-    -> [T.Tree n (Maybe t)]
-parsedTrees hype start n
-
-    = concatMap fromPassive
-    $ finalFrom start n hype
-
-  where
-
-    fromPassive :: Passive n t -> [T.Tree n (Maybe t)]
-    fromPassive p = concat
-        [ fromPassiveTrav p trav
-        | travSet <- maybeToList $ passiveTrav p hype
-        , trav <- S.toList travSet ]
-
-    fromPassiveTrav _p (Adjoin qa qm) =
-        [ replaceFoot ini aux
-        | aux <- fromPassive qa
-        , ini <- fromPassive qm ]
-
-    fromPassiveTrav p (Deactivate q) =
-        [ T.Branch
-            (nonTerm (p ^. dagID) hype)
-            (reverse ts)
-        | ts <- fromActive q
-        ]
-
-    fromPassiveTrav _ (SisterAdjoin _ _) =
-        error "parsedTrees: impossible SisterAdjoin?"
-
-    fromPassiveTrav _ _ =
-        error "parsedTrees: impossible fromPassiveTrav"
-
-    -- | Replace foot (the only non-terminal leaf) by the given
-    -- initial tree.
-    replaceFoot ini (T.Branch _ []) = ini
-    replaceFoot ini (T.Branch x ts) = T.Branch x $ map (replaceFoot ini) ts
-    replaceFoot _ t@(T.Leaf _)    = t
-
-
-    fromActive  :: Active -> [[T.Tree n (Maybe t)]]
-    fromActive p = case activeTrav p hype of
-        Nothing -> error "fromActive: unknown active item"
-        Just travSet -> if S.null travSet
-            then [[]]
-            else concatMap
-                (fromActiveTrav p)
-                (S.toList travSet)
-
-    fromActiveTrav _p (Scan q t) =
-        [ T.Leaf (Just t) : ts
-        | ts <- fromActive q ]
-
-    fromActiveTrav _p (Empty q) =
-        [ T.Leaf Nothing : ts
-        | ts <- fromActive q ]
-
-    fromActiveTrav _p (Foot q p) =
-        [ T.Branch (nonTerm (p ^. dagID) hype) [] : ts
-        | ts <- fromActive q ]
-
-    fromActiveTrav _p (Subst qp qa) =
-        [ t : ts
-        | ts <- fromActive qa
-        , t  <- fromPassive qp ]
-
-    fromActiveTrav _p (SisterAdjoin qp qa) =
-        [ ts' ++ ts
-        | ts  <- fromActive qa
-        , ts' <- T.subTrees <$> fromPassive qp ]
-
-    fromActiveTrav _ _ =
-        error "parsedTrees: impossible fromActiveTrav"
+-- -- | Extract the set of parsed trees obtained on the given input
+-- -- sentence.  Should be run on the result of the earley parser.
+-- parsedTrees
+--     :: forall n t. (Ord n, Ord t)
+--     => Hype n t     -- ^ Final state of the earley parser
+--     -> S.Set n      -- ^ The start symbol set
+--     -> Int          -- ^ Length of the input sentence
+--     -> [T.Tree n (Maybe t)]
+-- parsedTrees hype start n
+-- 
+--     = concatMap fromPassive
+--     $ finalFrom start n hype
+-- 
+--   where
+-- 
+--     fromPassive :: Passive n t -> [T.Tree n (Maybe t)]
+--     fromPassive p = concat
+--         [ fromPassiveTrav p trav
+--         | travSet <- maybeToList $ passiveTrav p hype
+--         , trav <- S.toList travSet ]
+-- 
+--     fromPassiveTrav _p (Adjoin qa qm) =
+--         [ replaceFoot ini aux
+--         | aux <- fromPassive qa
+--         , ini <- fromPassive qm ]
+-- 
+--     fromPassiveTrav p (Deactivate q) =
+--         [ T.Branch
+--             (nonTerm (p ^. dagID) hype)
+--             (reverse ts)
+--         | ts <- fromActive q
+--         ]
+-- 
+--     fromPassiveTrav _ (SisterAdjoin _ _) =
+--         error "parsedTrees: impossible SisterAdjoin?"
+-- 
+--     fromPassiveTrav _ _ =
+--         error "parsedTrees: impossible fromPassiveTrav"
+-- 
+--     -- | Replace foot (the only non-terminal leaf) by the given
+--     -- initial tree.
+--     replaceFoot ini (T.Branch _ []) = ini
+--     replaceFoot ini (T.Branch x ts) = T.Branch x $ map (replaceFoot ini) ts
+--     replaceFoot _ t@(T.Leaf _)    = t
+-- 
+-- 
+--     fromActive  :: Active -> [[T.Tree n (Maybe t)]]
+--     fromActive p = case activeTrav p hype of
+--         Nothing -> error "fromActive: unknown active item"
+--         Just travSet -> if S.null travSet
+--             then [[]]
+--             else concatMap
+--                 (fromActiveTrav p)
+--                 (S.toList travSet)
+-- 
+--     fromActiveTrav _p (Scan q t) =
+--         [ T.Leaf (Just t) : ts
+--         | ts <- fromActive q ]
+-- 
+--     fromActiveTrav _p (Empty q) =
+--         [ T.Leaf Nothing : ts
+--         | ts <- fromActive q ]
+-- 
+--     fromActiveTrav _p (Foot q p) =
+--         [ T.Branch (nonTerm (p ^. dagID) hype) [] : ts
+--         | ts <- fromActive q ]
+-- 
+--     fromActiveTrav _p (Subst qp qa) =
+--         [ t : ts
+--         | ts <- fromActive qa
+--         , t  <- fromPassive qp ]
+-- 
+--     fromActiveTrav _p (SisterAdjoin qp qa) =
+--         [ ts' ++ ts
+--         | ts  <- fromActive qa
+--         , ts' <- T.subTrees <$> fromPassive qp ]
+-- 
+--     fromActiveTrav _ _ =
+--         error "parsedTrees: impossible fromActiveTrav"
 
 
 --------------------------------------------------
@@ -1194,17 +1194,17 @@ recognizeFrom DAG.Gram{..} start input = do
     recognizeFromAuto auto start input
 
 
--- | Parse the given sentence and return the set of parsed trees.
-parse
-    :: (SOrd t, SOrd n)
-    => DAGram n t           -- ^ The grammar (set of rules)
-    -> S.Set n              -- ^ The start symbol set
-    -> Input t              -- ^ Input sentence
-    -> IO [T.Tree n (Maybe t)]
-parse DAG.Gram{..} start input = do
-    let gram = fromGram (M.keysSet factGram)
-        auto = mkAuto dagGram gram
-    parseAuto auto start input
+-- -- | Parse the given sentence and return the set of parsed trees.
+-- parse
+--     :: (SOrd t, SOrd n)
+--     => DAGram n t           -- ^ The grammar (set of rules)
+--     -> S.Set n              -- ^ The start symbol set
+--     -> Input t              -- ^ Input sentence
+--     -> IO [T.Tree n (Maybe t)]
+-- parse DAG.Gram{..} start input = do
+--     let gram = fromGram (M.keysSet factGram)
+--         auto = mkAuto dagGram gram
+--     parseAuto auto start input
 
 
 -- | Perform the earley-style computation given the grammar and
@@ -1253,17 +1253,17 @@ recognizeFromAuto auto start input = do
     return $ (not.null) (finalFrom start n hype)
 
 
--- | See `parse`.
-parseAuto
-    :: (SOrd t, SOrd n)
-    => Auto n t           -- ^ Grammar automaton
-    -> S.Set n            -- ^ The start symbol set
-    -> Input t            -- ^ Input sentence
-    -> IO [T.Tree n (Maybe t)]
-parseAuto auto start input = do
-    earSt <- earleyAuto auto input
-    let n = V.length (inputSent input)
-    return $ parsedTrees earSt start n
+-- -- | See `parse`.
+-- parseAuto
+--     :: (SOrd t, SOrd n)
+--     => Auto n t           -- ^ Grammar automaton
+--     -> S.Set n            -- ^ The start symbol set
+--     -> Input t            -- ^ Input sentence
+--     -> IO [T.Tree n (Maybe t)]
+-- parseAuto auto start input = do
+--     earSt <- earleyAuto auto input
+--     let n = V.length (inputSent input)
+--     return $ parsedTrees earSt start n
 
 
 -- | See `earley`.

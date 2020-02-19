@@ -97,5 +97,5 @@ nonTerm' i dag = case i of
 labNonTerm :: O.Node n t -> Maybe n
 labNonTerm (O.NonTerm y) = Just y
 labNonTerm (O.Sister y) = Just y
-labNonTerm (O.Foot y) = Just y
+-- labNonTerm (O.Foot y) = Just y
 labNonTerm _ = Nothing

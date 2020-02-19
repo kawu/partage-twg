@@ -133,7 +133,7 @@ anchor lx =
     onNode (O.Term (Term x)) = O.Term x
     onNode (O.NonTerm x) = O.NonTerm x
     onNode (O.Sister x) = O.Sister x
-    onNode (O.Foot x) = O.Foot x
+--     onNode (O.Foot x) = O.Foot x
 
 
 -------------------------------------------------------------
@@ -173,7 +173,7 @@ nodeP = between '(' ')' $ do
   subTrees <- forestP
   let nodeLabel =
         if starred && null subTrees
-        then O.Foot nonTerm
+        then error "Foot not supported!" -- O.Foot nonTerm
         else if starred
              then O.Sister nonTerm
              else O.NonTerm nonTerm
@@ -349,7 +349,7 @@ buildLabel = \case
   O.Term (Just x) -> B.fromText x
   O.Term Nothing -> "-NONE-" -- B.fromText 
   O.Sister x -> B.fromText x `mappend` "*"
-  O.Foot x -> B.fromText x `mappend` "*"
+--   O.Foot x -> B.fromText x `mappend` "*"
 
 
 isTerm :: O.Node NonTerm (Maybe T.Text) -> Bool

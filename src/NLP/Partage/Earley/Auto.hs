@@ -77,12 +77,12 @@ data Auto n t = Auto
     -- terminal even with subtree sharing turned on, which is related to
     -- non-determinism at the level of terminals (see `gramDAG`).
     --
-    , footDID  :: M.Map n (S.Set DID)
-    -- ^ A map which assigns DAG IDs to the corresponding foot non-terminals.
-    --
-    -- NOTE: With subtree sharing, there should be one DAG ID corresponding to
-    -- any given foot. This note applies to `leafDID` as well.
-    --
+--     , footDID  :: M.Map n (S.Set DID)
+--     -- ^ A map which assigns DAG IDs to the corresponding foot non-terminals.
+--     --
+--     -- NOTE: With subtree sharing, there should be one DAG ID corresponding to
+--     -- any given foot. This note applies to `leafDID` as well.
+--     --
     , leafDID  :: M.Map n (S.Set DID)
     -- ^ A map which assigns DAG IDs to the corresponding leaf non-terminals.
     , lhsNonTerm :: M.Map ID (NotFoot n)
@@ -106,7 +106,7 @@ mkAuto dag auto = M.size lhsMap `seq`
   , gramAuto = auto
   , withBody = mkWithBody auto
   , termDID  = mkTermDID dag'
-  , footDID  = mkFootDID dag'
+--   , footDID  = mkFootDID dag'
   , leafDID  = mkLeafDID dag'
   , lhsNonTerm = lhsMap
   }
@@ -138,15 +138,16 @@ mkTermDID dag = M.fromListWith S.union
     ]
 
 
--- | Create the `footDID` component.
-mkFootDID
-    :: (Ord n)
-    => DAG n t w
-    -> M.Map n (S.Set DID)
-mkFootDID dag = M.fromListWith S.union
-    [ (x, S.singleton i)
-    | i <- S.toList (DAG.nodeSet dag)
-    , O.Foot x <- maybeToList (DAG.label i dag) ]
+-- -- | Create the `footDID` component.
+-- mkFootDID
+--     :: (Ord n)
+--     => DAG n t w
+--     -> M.Map n (S.Set DID)
+-- mkFootDID dag = M.empty
+-- -- mkFootDID dag = M.fromListWith S.union
+-- --     [ (x, S.singleton i)
+-- --     | i <- S.toList (DAG.nodeSet dag)
+-- --     , O.Foot x <- maybeToList (DAG.label i dag) ]
 
 
 -- | Create the `leafDID` component.

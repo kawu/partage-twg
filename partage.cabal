@@ -43,11 +43,9 @@ library
       , time                >= 1.5      && < 1.9
 
     exposed-modules:
-        NLP.Partage.Tree
-      , NLP.Partage.Tree.Other
---       , NLP.Partage.EdgeTree
+--         NLP.Partage.Tree
+        NLP.Partage.Tree.Other
       , NLP.Partage.DAG
---       , NLP.Partage.Gen
       , NLP.Partage.Auto
       , NLP.Partage.Auto.List
       , NLP.Partage.Auto.Trie
@@ -63,29 +61,24 @@ library
       , NLP.Partage.Earley.ExtWeight
       , NLP.Partage.Earley.Chart
 
-      , NLP.Partage.AStar
-      , NLP.Partage.AStar.Deriv
-      , NLP.Partage.AStar.Deriv.Gorn
---       , NLP.Partage.AStar.DepTree
-
-      , NLP.Partage.AStar.Base
-      , NLP.Partage.AStar.Item
-      , NLP.Partage.AStar.Chart
+--       , NLP.Partage.AStar
+--       , NLP.Partage.AStar.Deriv
+--       , NLP.Partage.AStar.Deriv.Gorn
+-- 
+--       , NLP.Partage.AStar.Base
+--       , NLP.Partage.AStar.Item
+--       , NLP.Partage.AStar.Chart
 
       , NLP.Partage.Format.Brackets
 
     other-modules:
         NLP.Partage.SOrd
       , NLP.Partage.Earley.AutoAP
-      , NLP.Partage.AStar.Auto
-      , NLP.Partage.AStar.Heuristic
-      , NLP.Partage.AStar.HeuristicNew
-      -- , NLP.Partage.AStar.HeuristicOld
-      , NLP.Partage.AStar.Heuristic.Bag
---       , NLP.Partage.AStar.Heuristic.Dummy
---       , NLP.Partage.AStar.Heuristic.Base
--- 
-      , NLP.Partage.AStar.ExtWeight
+--       , NLP.Partage.AStar.Auto
+--       , NLP.Partage.AStar.Heuristic
+--       , NLP.Partage.AStar.HeuristicNew
+--       , NLP.Partage.AStar.Heuristic.Bag
+--       , NLP.Partage.AStar.ExtWeight
 
     ghc-options: -Wall
 
