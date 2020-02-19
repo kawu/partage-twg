@@ -22,7 +22,7 @@ module TestSet
 
 import           Control.Applicative       ((<$>), (<*>))
 import           Control.Arrow             (first)
-import           Control.Monad             (forM_, guard, void, forever)
+import           Control.Monad             (forM, forM_, guard, void, forever)
 -- import           Control.Monad.Morph       as Morph
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.Maybe (MaybeT (..))
@@ -85,6 +85,7 @@ leaf x = R.Node (O.NonTerm x) []
 term x = R.Node (O.Term x) []
 -- foot x = R.Node (O.Foot x) []
 sister x = R.Node (O.Sister x)
+dnode x = R.Node (O.DNode x)
 
 
 ---------------------------------------------------------------------
@@ -924,36 +925,295 @@ gram10Tests =
 
 
 ---------------------------------------------------------------------
+-- Grammar 12 (Wrapping)
+---------------------------------------------------------------------
+
+
+mkGram12 :: [(OTree, Weight)]
+mkGram12 = map (,1)
+  [we, keep, wondering, what, mr, gates, wanted, to, say]
+  where
+    term' t = term . Just $ Term t Nothing
+    we =
+      node "NP"
+      [ node "PRO" [term' "we"]
+      ]
+    keep =
+      node "SENTENCE"
+      [ node "CLAUSE"
+        [ node "CORE"
+          [ leaf "NP" 
+          , node "NUC"
+            [ node "NUC" 
+              [ node "V" [term' "keep"]
+              ]
+            , leaf "NUC"
+            ]
+          ]
+        ]
+      ]
+    wondering =
+      node "NUC"
+      [ node "V" [term' "wondering"]
+      ]
+    what =
+      node "PrCS"
+      [ node "NP-WH"
+        [ node "PRO-WH" [term' "what"]
+        ]
+      ]
+    mr =
+      sister "NUC_N"
+      [ node "N-PROP" [term' "mr"]
+      ]
+    gates =
+      node "NP"
+      [ node "CORE_N"
+        [ node "NUC_N"
+          [ node "N-PROP" [term' "gates"]
+          ]
+        ]
+      ]
+    wanted =
+      sister "CLAUSE"
+      [ node "CORE"
+        [ node "CORE"
+          [ leaf "NP"
+          , node "NUC"
+            [ node "V" [term' "wanted"]
+            ]
+          ]
+        ]
+      ]
+    to =
+      sister "CORE"
+      [ node "CLM" [term' "to"]
+      ]
+    say =
+      node "CLAUSE"
+      [ leaf "PrCS"
+      , dnode "CORE"
+        [ node "CORE"
+          [ node "NUC"
+            [ node "V" [term' "say"]
+            ]
+          ]
+        ]
+      ]
+--     say =
+--       sister "CLAUSE"
+--       -- TODO: do we allow sister adjunction to the root of another
+--       -- sister-adjunction tree?
+--       [ node "CLAUSE"
+--         [ leaf "PrCS"
+--         -- TODO: update with wrapping!
+--         , node "CORE"
+--           [ node "NUC"
+--             [ node "V" [term' "say"]
+--             ]
+--           ]
+--         ]
+--       ]
+
+
+-- | The purpose of this test is to test the inversed root adjoin
+-- inference operation.
+gram12Tests :: [Test]
+gram12Tests =
+    [ test "SENTENCE" ("we keep wondering what mr gates wanted to say") No
+    ]
+    where
+      test start sent res = Test start (toks sent) M.empty res
+      toks = map tok . words
+      tok t = Term t Nothing
+
+
+---------------------------------------------------------------------
+-- Grammar 13 (Wrapping)
+---------------------------------------------------------------------
+
+
+mkGram13 :: [(OTree, Weight)]
+mkGram13 = map (,1)
+  [alpha, gamma, bad_gamma]
+  where
+    term' t = term . Just $ Term t Nothing
+    alpha =
+      node "R"
+      [ node "X"
+        [ dnode "N" 
+          [ term' "a"
+          , term' "a"
+          ]
+        ]
+      ]
+    gamma =
+      node "X"
+      [ term' "b"
+      , leaf "N"
+      , term' "b"
+      ]
+    bad_gamma =
+      node "Y"
+      [ term' "c"
+      , leaf "N"
+      , term' "c"
+      ]
+
+
+-- | The purpose of this test is to test the inversed root adjoin
+-- inference operation.
+gram13Tests :: [Test]
+gram13Tests =
+    [ test "R" ("b a a b") Yes
+    , test "R" ("a b") No
+    , test "R" ("c a a c") No
+    ]
+    where
+      test start sent res = Test start (toks sent) M.empty res
+      toks = map tok . words
+      tok t = Term t Nothing
+
+
+---------------------------------------------------------------------
+-- Grammar 14 (Wrapping)
+---------------------------------------------------------------------
+
+
+mkGram14 :: [(OTree, Weight)]
+mkGram14 = map (,1)
+  [alpha, beta1, beta2]
+  where
+    term' t = term . Just $ Term t Nothing
+    beta2 =
+      node "X"
+      [ term' "c"
+      , dnode "B" [term' "c"]
+      ]
+    beta1 =
+      node "X"
+      [ term' "b"
+      , dnode "A" [term' "b"]
+      ]
+    alpha =
+      node "X"
+      [ leaf "A"
+      , leaf "B"
+      ]
+
+
+-- | The purpose of this test is to test the inversed root adjoin
+-- inference operation.
+gram14Tests :: [Test]
+gram14Tests =
+    [ test "X" ("c b b c") Yes
+    , test "X" ("c b c b") No
+    ]
+    where
+      test start sent res = Test start (toks sent) M.empty res
+      toks = map tok . words
+      tok t = Term t Nothing
+
+
+---------------------------------------------------------------------
+-- Grammar 15 (Wrapping)
+---------------------------------------------------------------------
+
+
+mkGram15 :: [(OTree, Weight)]
+mkGram15 = map (,1)
+  [alpha, beta, gamma]
+  where
+    term' t = term . Just $ Term t Nothing
+    alpha =
+      node "X"
+      [ term' "a"
+      , leaf "A"
+      ]
+    beta =
+      node "A"
+      [ term' "b"
+      , leaf "B"
+      ]
+    gamma =
+      node "X"
+      [ term' "c"
+      , dnode "B" [term' "c"]
+      ]
+
+
+-- | The purpose of this test is to test the inversed root adjoin
+-- inference operation.
+gram15Tests :: [Test]
+gram15Tests =
+    [ test "X" ("c a b c") Yes
+    ]
+    where
+      test start sent res = Test start (toks sent) M.empty res
+      toks = map tok . words
+      tok t = Term t Nothing
+
+
+---------------------------------------------------------------------
+-- Grammar 16 (Wrapping)
+---------------------------------------------------------------------
+
+
+mkGram16 :: [(OTree, Weight)]
+mkGram16 = map (,1)
+  [alpha, beta, gamma]
+  where
+    term' t = term . Just $ Term t Nothing
+    alpha =
+      node "X"
+      [ term' "a"
+      , leaf "A"
+      ]
+    beta =
+      node "X"
+      [ term' "b"
+      , dnode "A" [leaf "B"]
+      ]
+    gamma =
+      node "X"
+      [ term' "c"
+      , dnode "B" [term' "c"]
+      ]
+
+
+-- | The purpose of this test is to test the inversed root adjoin
+-- inference operation.
+gram16Tests :: [Test]
+gram16Tests =
+    [ test "X" ("c b a c") Yes
+    , test "X" ("c b c a") No
+    ]
+    where
+      test start sent res = Test start (toks sent) M.empty res
+      toks = map tok . words
+      tok t = Term t Nothing
+
+
+---------------------------------------------------------------------
 -- Resources
 ---------------------------------------------------------------------
 
 
--- | Compiled grammars.
-data Res = Res
---   { gram1 :: [(OTree, Weight)]
---   , gram1_1 :: [(OTree, Weight)]
---   , gram2 :: [(OTree, Weight)]
---   , gram3 :: [(OTree, Weight)]
---   , gram4 :: [(OTree, Weight)]
-  { gram5 :: [(OTree, Weight)]
-  , gram6 :: [(OTree, Weight)]
-  , gram7 :: [(OTree, Weight)]
-  , gram8 :: [(OTree, Weight)]
-  , gram9 :: [(OTree, Weight)]
-  , gram10 :: [(OTree, Weight)]
---   , gram11 :: [(OTree, Weight)]
-  }
-
-
--- | Construct the shared resource (i.e. the grammars) used in
--- tests.
--- mkGrams :: IO Res
-mkGrams :: Res
-mkGrams =
-  Res mkGram5 mkGram6 mkGram7 mkGram8 mkGram9 mkGram10
---   Res mkGram1 mkGram1_1 mkGram2 mkGram3 mkGram4
---       mkGram5 mkGram6 mkGram7 mkGram8 mkGram9
---       mkGram10 mkGram11
+-- | The set of grammar/test suite pairs.
+testSuite :: [([(OTree, Weight)], [Test])]
+testSuite =
+  [ (mkGram5, gram5Tests)
+  , (mkGram6, gram6Tests)
+  , (mkGram7, gram7Tests)
+  , (mkGram8, gram8Tests)
+  , (mkGram9, gram9Tests)
+  , (mkGram10, gram10Tests)
+  , (mkGram12, gram12Tests)
+  , (mkGram13, gram13Tests)
+  , (mkGram14, gram14Tests)
+  , (mkGram15, gram15Tests)
+  , (mkGram16, gram16Tests)
+  ]
 
 
 ---------------------------------------------------------------------
@@ -1048,28 +1308,15 @@ testTree
         -- ^ Name of the tested module
   -> TagParser
   -> TestTree
-testTree modName TagParser{..} = do
-  -- let encode = fmap $ map (first O.encode)
-  withResource (return mkGrams) (const $ return ()) $
-    \resIO -> testGroup modName $
---         map (testIt resIO gram1) gram1Tests ++
---         map (testIt resIO gram1_1) gram1_1Tests ++
---         map (testIt resIO gram2) gram2Tests ++
---         map (testIt resIO gram3) gram3Tests ++
---         map (testIt resIO gram4) gram4Tests ++
-        map (testIt resIO gram5) gram5Tests ++
-        map (testIt resIO gram6) gram6Tests ++
-        map (testIt resIO gram7) gram7Tests ++
-        map (testIt resIO gram8) gram8Tests ++
-        map (testIt resIO gram9) gram9Tests ++
-        map (testIt resIO gram10) gram10Tests -- ++
---         map (testIt resIO gram11) gram11Tests
+testTree modName TagParser{..} = testGroup modName $ do
+  (gram, gramTests) <- testSuite
+  test <- gramTests
+  return $ testIt gram test
   where
-    testIt resIO getGram test =
+    testIt gram test =
       -- make sure that headMap is empty if no dependency support
       if (not dependencySupport <= M.null (headMap test))
          then testCase (show test) $ do
-           gram <- getGram <$> resIO
            testRecognition gram test
 --            testParsing gram test
 --            testDerivsIsSet gram test

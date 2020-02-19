@@ -28,7 +28,7 @@ module NLP.Partage.Earley.Chart
 , finalFrom
 , finalFrom'
 , expectEnd
--- , rootSpan
+, rootSpan
 , rootEnd
 -- , provideBeg'
 -- , provideBegIni
@@ -63,7 +63,7 @@ data Chart n t = Chart
 
     -- , doneActive  :: M.Map (ID, Pos) (S.Set (Active n t))
       doneActive  :: M.Map Pos (M.Map ID
-        (M.Map Active (S.Set (Trav n t))))
+        (M.Map (Active n) (S.Set (Trav n t))))
     -- ^ Processed active items partitioned w.r.t ending positions and
     -- FSA state IDs.
 
@@ -73,7 +73,7 @@ data Chart n t = Chart
     -- ^ Processed passive items partitioned w.r.t. (starting position,
     -- non-terminal in the root, ending position).
 
-    , doneActiveByRoot :: M.Map (Pos, n) (S.Set Active)
+    , doneActiveByRoot :: M.Map (Pos, n) (S.Set (Active n))
     -- ^ Processed active items partitioned w.r.t ending positions and parent
     -- non-terminals, i.e., LHS non-terminals of the corresponding rules. Does
     -- not contain traversals (in contrast with `doneActive`).
@@ -109,7 +109,7 @@ listPassive = (M.elems >=> M.toList) . donePassive
 
 -- | List all active done items together with the corresponding
 -- traversals.
-listActive :: Chart n t -> [(Active, S.Set (Trav n t))]
+listActive :: Chart n t -> [(Active n, S.Set (Trav n t))]
 listActive = (M.elems >=> M.elems >=> M.toList) . doneActive
 
 
@@ -139,7 +139,8 @@ doneEdgesNum earSt
 
 -- | Return the corresponding set of traversals for an active item.
 activeTrav
-    :: Active -> Chart n t
+    :: (Ord n) 
+    => Active n -> Chart n t
     -> Maybe (S.Set (Trav n t))
 activeTrav p
     = (   M.lookup (p ^. spanA ^. end)
@@ -149,7 +150,7 @@ activeTrav p
 
 
 -- | Check if the active item is not already processed.
-isProcessedA :: Active -> Chart n t -> Bool
+isProcessedA :: (Ord n) => Active n -> Chart n t -> Bool
 isProcessedA p =
     check . activeTrav p
   where
@@ -161,7 +162,7 @@ isProcessedA p =
 saveActive
     :: (Ord t, Ord n)
     => M.Map ID (NotFoot n) -- ^ See `lhsNonTerm` from `Auto`
-    -> Active
+    -> Active n
     -> S.Set (Trav n t)
     -> Chart n t
     -> Chart n t
@@ -194,7 +195,7 @@ saveActive lhsMap p ts chart =
 -- present in the hypergraph.
 hasActiveTrav
     :: (Ord t, Ord n)
-    => Active
+    => Active n
     -> S.Set (Trav n t)
     -> Chart n t
     -> Bool
@@ -364,7 +365,7 @@ expectEnd
     -> (s -> Chart n t)
     -> DAG.DID
     -> Pos
-    -> P.ListT m Active
+    -> P.ListT m (Active n)
 expectEnd getAuto getChart did i = do
     compState <- lift MS.get
     let Chart{..} = getChart compState
@@ -383,28 +384,20 @@ expectEnd getAuto getChart did i = do
     each $ M.keys doneEndLab
 
 
--- -- | Check if a passive item exists with:
--- -- * the given root non-terminal value (but not top-level
--- --   auxiliary)
--- --   - UPDATE: is it ensured that it is not top-level auxiliary?
--- --   - UPDATE 17/06/2017: now it is ensured
--- -- * the given span
--- rootSpan
---     :: (Ord n, MS.MonadState s m)
---     => (s -> Chart n t)
---     -> n -> (Pos, Pos)
---     -> P.ListT m (Passive n t)
--- rootSpan getChart x (i, j) = do
---     -- Hype{..} <- lift RWS.get
---     Chart{..} <- getChart <$> lift MS.get
---     -- listValues (i, x, j) donePassive
---     p <- each $ case M.lookup (i, x, j) donePassive of
---         Nothing -> []
---         Just m -> M.keys m
---     let pDID = p ^. dagID
---         pSpan = p ^. spanP
---     guard $ auxiliary pSpan <= not (isRoot pDID)
---     return p
+-- | Check if a passive item exists with:
+-- * the given root non-terminal value
+-- * the given span
+rootSpan
+    :: (Ord n, MS.MonadState s m)
+    => (s -> Chart n t)
+    -> n -> (Pos, Pos)
+    -> P.ListT m (Passive n t)
+rootSpan getChart x (i, j) = do
+    Chart{..} <- getChart <$> lift MS.get
+    p <- each $ case M.lookup (i, x, j) donePassive of
+        Nothing -> []
+        Just m -> M.keys m
+    return p
 
 
 -- | Return all active processed items which:
@@ -415,7 +408,7 @@ rootEnd
     => (s -> Chart n t)
     -> n
     -> Pos
-    -> P.ListT m Active
+    -> P.ListT m (Active n)
 rootEnd getChart lhsNT i = do
     compState <- lift MS.get
     let Chart{..} = getChart compState

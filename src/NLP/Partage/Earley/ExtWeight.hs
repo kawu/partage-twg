@@ -38,52 +38,57 @@ import           NLP.Partage.Earley.Item
 -- UPDATE 09.05.2018: This should be rather called an 'Arc' or something alike.
 data Trav n t
     = Scan
-        { _scanFrom :: Active
+        { _scanFrom :: Active n
         -- ^ The input active state
         , _scanTerm :: t
         -- ^ The scanned terminal
         }
     | Empty
-        { _scanFrom :: Active
+        { _scanFrom :: Active n
         -- ^ The input active state
         }
     | Subst
         { _passArg  :: Passive n t
         -- ^ The passive argument of the action
-        , _actArg   :: Active
+        , _actArg   :: Active n
         -- ^ The active argument of the action
         }
-    -- ^ Pseudo substitution
-    | Foot
-        { _actArg   :: Active
-        -- ^ The passive argument of the action
-        -- , theFoot  :: n
-        , _theFoot  :: Passive n t
-        -- ^ The foot non-terminal
-        }
-    -- ^ Foot adjoin
-    | Adjoin
-        { _passAdj  :: Passive n t
-        -- ^ The adjoined item
-        , _passMod  :: Passive n t
-        -- ^ The modified item
-        }
-    -- ^ Adjoin terminate with two passive arguments
+--     -- ^ Pseudo substitution
+--     | Foot
+--         { _actArg   :: Active n
+--         -- ^ The passive argument of the action
+--         -- , theFoot  :: n
+--         , _theFoot  :: Passive n t
+--         -- ^ The foot non-terminal
+--         }
+--     -- ^ Foot adjoin
+--     | Adjoin
+--         { _passAdj  :: Passive n t
+--         -- ^ The adjoined item
+--         , _passMod  :: Passive n t
+--         -- ^ The modified item
+--         }
+--     -- ^ Adjoin terminate with two passive arguments
     | SisterAdjoin
         { _passArg  :: Passive n t
         -- ^ The passive argument of the action
-        , _actArg   :: Active
+        , _actArg   :: Active n
         -- ^ The active argument of the action
         }
     | PredictWrapping
         { _passArg  :: Passive n t
         -- ^ The passive argument of the action
-        , _actArg   :: Active
+        , _actArg   :: Active n
         -- ^ The active argument of the action
         }
-    -- ^ Pseudo substitution
+    | CompleteWrapping
+        { _passWrp  :: Passive n t
+        -- ^ The wrapping item
+        , _passMod  :: Passive n t
+        -- ^ The modified item
+        }
     | Deactivate
-        { _actArg   :: Active
+        { _actArg   :: Active n
         -- ^ The active argument of the action
         }
     deriving (Show, Eq, Ord)
@@ -130,7 +135,7 @@ type Prio = (Int, Int, Bool)
 
 -- | Priority of an active item.  Crucial for the algorithm --
 -- states have to be removed from the queue in a specific order.
-prioA :: Active -> Prio
+prioA :: Active n -> Prio
 prioA p =
     let i = getL (beg . spanA) p
         j = getL (end . spanA) p

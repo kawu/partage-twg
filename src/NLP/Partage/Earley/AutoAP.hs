@@ -111,7 +111,7 @@ import qualified Data.Time               as Time
 -- | Passive or active item.
 data Item n t
     = ItemP (Passive n t)
-    | ItemA Active
+    | ItemA (Active n)
     deriving (Show, Eq, Ord)
 
 
@@ -174,7 +174,7 @@ mkHype
     -- :: (HOrd n, HOrd t)
     :: (Ord n)
     => Auto n t
-    -> S.Set Active
+    -> S.Set (Active n)
     -> Hype n t
 mkHype auto s = Hype
     { automat = auto
@@ -334,14 +334,14 @@ sumTrav xs = sum
 
 
 -- | Check if the active item is not already processed.
-isProcessedA :: Active -> Earley n t Bool
+isProcessedA :: (Ord n) => Active n -> Earley n t Bool
 isProcessedA p = Chart.isProcessedA p . chart <$> RWS.get
 
 
 -- | Mark the active item as processed (`done').
 saveActive
     :: (Ord t, Ord n)
-    => Active
+    => Active n
     -> S.Set (Trav n t)
     -> Earley n t ()
 saveActive p ts = do
@@ -431,7 +431,7 @@ savePassive p ts =
 
 -- | Add the active item to the waiting queue.  Check first if it
 -- is not already in the set of processed (`done') states.
-pushActive :: (Ord t, Ord n) => Active -> Trav n t -> Earley n t ()
+pushActive :: (Ord t, Ord n) => Active n -> Trav n t -> Earley n t ()
 pushActive p t = isProcessedA p >>= \b -> if b
     then saveActive p $ S.singleton t
     else modify' $ \s -> s {waiting = newWait (waiting s)}
@@ -466,7 +466,7 @@ pushPassive p t = isProcessedP p >>= \b -> if b
 
 -- | Add to the waiting queue all items induced from
 -- the given active item.
-pushInduced :: (Ord t, Ord n) => Active -> Trav n t -> Earley n t ()
+pushInduced :: (Ord t, Ord n) => Active n -> Trav n t -> Earley n t ()
 pushInduced p t = do
     pushActive p t
 --     dag <- RWS.gets (gramDAG . automat)
@@ -502,21 +502,21 @@ popItem = RWS.state $ \st -> case Q.minView (waiting st) of
 
 
 -- | See `Chart.expectEnd`.
-expectEnd :: DID -> Pos -> P.ListT (Earley n t) Active
+expectEnd :: DID -> Pos -> P.ListT (Earley n t) (Active n)
 expectEnd = Chart.expectEnd automat chart
 
 
--- -- | Return all passive items with:
--- -- * the given root non-terminal value (but not top-level auxiliary)
--- -- * the given span
--- rootSpan
---     :: Ord n => n -> (Pos, Pos)
---     -> P.ListT (Earley n t) (Passive n t)
--- rootSpan = Chart.rootSpan chart
+-- | Return all passive items with:
+-- * the given root non-terminal value
+-- * the given span
+rootSpan
+    :: Ord n => n -> (Pos, Pos)
+    -> P.ListT (Earley n t) (Passive n t)
+rootSpan = Chart.rootSpan chart
 
 
 -- | See `Chart.rootEnd`.
-rootEnd :: Ord n => n -> Pos -> P.ListT (Earley n t) Active
+rootEnd :: Ord n => n -> Pos -> P.ListT (Earley n t) (Active n)
 rootEnd = Chart.rootEnd chart
 
 
@@ -693,7 +693,7 @@ hasElems i = do
 
 
 -- | Try to perform SCAN on the given active state.
-tryScan :: (SOrd t, SOrd n) => Active -> Earley n t ()
+tryScan :: (SOrd t, SOrd n) => Active n -> Earley n t ()
 tryScan p = void $ P.runListT $ do
 #ifdef DebugOn
     begTime <- lift . lift $ Time.getCurrentTime
@@ -722,7 +722,7 @@ tryScan p = void $ P.runListT $ do
 
 
 -- | Try to scan an empty terminal.
-tryEmpty :: (SOrd t, SOrd n) => Active -> Earley n t ()
+tryEmpty :: (SOrd t, SOrd n) => Active n -> Earley n t ()
 tryEmpty p = void $ P.runListT $ do
 #ifdef DebugOn
     begTime <- lift . lift $ Time.getCurrentTime
@@ -1011,11 +1011,12 @@ trySisterAdjoin p = void $ P.runListT $ do
 
 --------------------------------------------------
 -- PREDICT WRAPPING
+--
+-- UPDATE 19.02.2020: new rule!
 --------------------------------------------------
 
 
--- | UPDATE 19.02.2020: new rule!
--- TODO: add description
+-- | TODO: add description
 tryPredictWrapping :: (SOrd t, SOrd n) => Passive n t -> Earley n t ()
 tryPredictWrapping p = void $ P.runListT $ do
 #ifdef DebugOn
@@ -1040,7 +1041,7 @@ tryPredictWrapping p = void $ P.runListT $ do
     -- construct the resultant state
     let pBeg = getL beg pSpan
         pEnd = getL end pSpan
-        newGap = (pBeg, pEnd)
+        newGap = (pBeg, pEnd, nodeNT)
         q' = setL state j
            . setL (end . spanA) pEnd
            . modL' (gaps . spanA) (S.insert newGap)
@@ -1052,9 +1053,78 @@ tryPredictWrapping p = void $ P.runListT $ do
     hype <- RWS.get
     lift . lift $ do
         endTime <- Time.getCurrentTime
-        putStr "[U]  " >> printPassive p hype
+        putStr "[P]  " >> printPassive p hype
         putStr "  +  " >> printActive q
         putStr "  :  " >> printActive q'
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
+
+
+--------------------------------------------------
+-- COMPLETE WRAPPING
+--
+-- UPDATE 19.02.2020: new rule!
+--------------------------------------------------
+
+
+-- | Wrap a fully-parsed tree represented by `q` over a partially parsed
+-- tree represented by `q`.
+tryCompleteWrapping :: (SOrd t, SOrd n) => Passive n t -> Earley n t ()
+tryCompleteWrapping q = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- lift . lift $ Time.getCurrentTime
+#endif
+    -- let qLab = q ^. label
+    let qDID = q ^. dagID
+        qSpan = q ^. spanP
+    -- the underlying dag grammar
+    dag <- RWS.gets (gramDAG . automat)
+    parMap <- RWS.gets (dagParMap . automat)
+    -- make sure the label is top-level
+    guard $ isRoot qDID
+    -- for each available gap
+    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+    -- take all passive items with a given span and a given
+    -- root non-terminal (IDs irrelevant)
+    qNonTerm <- some (nonTerm' qDID dag)
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    -- TODO: this is not 100% consistent with the specification,
+    -- see the inference rules (CW: side conditions)!
+    --   -> have a look at the parent of the d-daughter node!
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    p <- rootSpan gapNT (gapBeg, gapEnd)
+    -- make sure that `p` has ?ws == True
+    guard $ getL ws p
+    -- verify the label of the parent
+    parIdSet <- some $
+      case p ^. dagID of
+        Left _ ->
+          error "tryCompleteWrapping: d-daughter root"
+        Right did -> M.lookup did parMap
+    if (S.size parIdSet > 1)
+       then error "tryCompleteWrapping: d-daughter node with several parents"
+       else return ()
+    parID <- each (S.toList parIdSet)
+    parNonTerm <- some (labNonTerm =<< DAG.label parID dag) -- parID dag)
+    guard $ qNonTerm == parNonTerm
+    -- calculate the new set of gaps
+    let newGaps = S.union (p ^. spanP ^. gaps)
+                . S.delete gap
+                $ qSpan ^. gaps
+    -- construct the resulting item
+    let p' = setL (spanP >>> beg) (qSpan ^. beg)
+           . setL (spanP >>> end) (qSpan ^. end)
+           . setL (spanP >>> gaps) newGaps
+           . setL ws False
+           $ p
+    lift $ pushPassive p' $ CompleteWrapping q p
+#ifdef DebugOn
+    hype <- RWS.get
+    lift . lift $ do
+        endTime <- Time.getCurrentTime
+        putStr "[C]  " >> printPassive q hype
+        putStr "  +  " >> printPassive p hype
+        putStr "  :  " >> printPassive p' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -1065,7 +1135,7 @@ tryPredictWrapping p = void $ P.runListT $ do
 
 
 -- | Try to perform DEACTIVATE.
-tryDeactivate :: (SOrd t, SOrd n) => Active -> Earley n t ()
+tryDeactivate :: (SOrd t, SOrd n) => Active n -> Earley n t ()
 tryDeactivate p = void $ P.runListT $ do
 #ifdef DebugOn
   begTime <- lift . lift $ Time.getCurrentTime
@@ -1122,6 +1192,7 @@ step (ItemP p :-> e) = do
 --       , tryAdjoinTerm
       , trySisterAdjoin
       , tryPredictWrapping
+      , tryCompleteWrapping
       ]
     savePassive p $ prioTrav e
 step (ItemA p :-> e) = do
@@ -1440,7 +1511,8 @@ isRecognized input Hype{..} =
 
 -- | Return the corresponding set of traversals for an active item.
 activeTrav
-  :: Active
+  :: (Ord n)
+  => Active n
   -> Hype n t
   -> Maybe (S.Set (Trav n t))
 activeTrav p h = Chart.activeTrav p (chart h)

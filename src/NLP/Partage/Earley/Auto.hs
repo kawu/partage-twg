@@ -89,6 +89,10 @@ data Auto n t = Auto
     -- ^ A map which uniquely determines the LHS corresponding to the rule
     -- containing the given ID. WARNING: The LHS can be uniquely determined only
     -- if one has a separate FSA/Trie for each such non-terminal!
+
+    , dagParMap :: DAG.ParentMap
+    -- ^ Need it to determine the parents of the individual DAG nodes (see the
+    -- complete-wrapping rule)
     }
 
 
@@ -109,6 +113,7 @@ mkAuto dag auto = M.size lhsMap `seq`
 --   , footDID  = mkFootDID dag'
   , leafDID  = mkLeafDID dag'
   , lhsNonTerm = lhsMap
+  , dagParMap = DAG.parentMap dag'
   }
   where
     dag' = fmap (const ()) dag
@@ -194,4 +199,7 @@ mkLhsNonTerm dag auto = M.fromList
     labNonTerm (O.Sister y) = Just $ NotFoot
       { notFootLabel = y
       , isSister = True }
+    labNonTerm (O.DNode y) = Just $ NotFoot
+      { notFootLabel = y
+      , isSister = False }
     labNonTerm _ = Nothing

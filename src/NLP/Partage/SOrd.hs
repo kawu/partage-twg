@@ -22,14 +22,18 @@ class (Ord a) => HOrd a where
 instance (Ord a) => HOrd a where
 
 
--- | 'Show' + 'Ord'
-#ifdef DebugOn
 class (Show a, HOrd a) => SOrd a where
 instance (Show a, HOrd a) => SOrd a where
-#elif CheckMonotonic
-class (Show a, HOrd a) => SOrd a where
-instance (Show a, HOrd a) => SOrd a where
-#else
-class HOrd a => SOrd a where
-instance HOrd a => SOrd a where
-#endif
+
+
+-- -- | 'Show' + 'Ord'
+-- #ifdef DebugOn
+-- class (Show a, HOrd a) => SOrd a where
+-- instance (Show a, HOrd a) => SOrd a where
+-- #elif CheckMonotonic
+-- class (Show a, HOrd a) => SOrd a where
+-- instance (Show a, HOrd a) => SOrd a where
+-- #else
+-- class HOrd a => SOrd a where
+-- instance HOrd a => SOrd a where
+-- #endif

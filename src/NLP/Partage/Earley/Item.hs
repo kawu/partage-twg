@@ -53,21 +53,21 @@ import           NLP.Partage.Earley.Auto (Auto(..))
 --------------------------------------------------
 
 
-data Span = Span {
+data Span n = Span {
     -- | The starting position.
       _beg   :: Pos
     -- | The ending position (or rather the position of the dot).
     , _end   :: Pos
     -- | Coordinates of the gaps (if any)
-    , _gaps  :: S.Set (Pos, Pos)
+    , _gaps  :: S.Set (Pos, Pos, n)
     } deriving (Show, Eq, Ord)
 $( makeLenses [''Span] )
 
 
 -- | Active chart item : state reference + span.
-data Active = Active {
+data Active n = Active {
       _state :: ID
-    , _spanA :: Span
+    , _spanA :: Span n
     } deriving (Show, Eq, Ord)
 $( makeLenses [''Active] )
 
@@ -76,9 +76,9 @@ $( makeLenses [''Active] )
 -- TODO: remove the redundant 't' parameter
 data Passive n t = Passive
   { _dagID :: Either (NotFoot n) DID
-    -- ^ We store non-terminal 'n' for items representing
+    -- ^ We store non-terminal 'n' (actually, NonFoot n) for items representing
     -- fully recognized elementary trees.
-  , _spanP :: Span
+  , _spanP :: Span n
     -- ^ Span of the chart item
   , _ws :: Bool
     -- ^ TODO: see the inference rules
@@ -87,7 +87,7 @@ $( makeLenses [''Passive] )
 
 
 -- | Has no gaps
-noGaps :: Span -> Bool
+noGaps :: Span n -> Bool
 noGaps = S.null . getL gaps
 
 
@@ -105,11 +105,11 @@ isRoot x = case x of
 
 -- #ifdef DebugOn
 -- | Print an active item.
-printSpan :: Span -> IO ()
+printSpan :: (Show n) => Span n -> IO ()
 printSpan span = do
     putStr . show $ getL beg span
     putStr ", "
-    forM_ (S.toList $ getL gaps span) $ \(p, q) -> do
+    forM_ (S.toList $ getL gaps span) $ \(p, q, x) -> do
         putStr $ show p
         putStr ", "
         putStr $ show q
@@ -118,7 +118,7 @@ printSpan span = do
 
 
 -- | Print an active item.
-printActive :: Active -> IO ()
+printActive :: (Show n) => Active n -> IO ()
 printActive p = do
     putStr "("
     putStr . show $ getL state p
