@@ -28,6 +28,7 @@ module NLP.Partage.DAG
 -- ** Predicates
 , isRoot
 , isLeaf
+, isDNode
 -- , isFoot
 -- , isSpine
 -- ** Querying
@@ -166,6 +167,14 @@ children i = map fst . edges i
 isRoot :: DID -> DAG a b -> Bool
 isRoot i dag = S.member i (rootSet dag)
 
+
+-- | Check whether the given node is a root.
+isDNode :: DID -> DAG (O.Node n t) b -> Bool
+isDNode i dag = case lookup i dag of
+    Nothing -> False  -- TODO: is that allowed?
+    Just n  -> case nodeLabel n of
+        O.DNode _  -> True
+        _          -> False
 
 -- -- | A function which tells whether the given node is a spine node.
 -- -- The function employs memoization once it is supplied with its first

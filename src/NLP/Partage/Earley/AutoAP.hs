@@ -506,13 +506,13 @@ expectEnd :: DID -> Pos -> P.ListT (Earley n t) Active
 expectEnd = Chart.expectEnd automat chart
 
 
--- | Return all passive items with:
--- * the given root non-terminal value (but not top-level auxiliary)
--- * the given span
-rootSpan
-    :: Ord n => n -> (Pos, Pos)
-    -> P.ListT (Earley n t) (Passive n t)
-rootSpan = Chart.rootSpan chart
+-- -- | Return all passive items with:
+-- -- * the given root non-terminal value (but not top-level auxiliary)
+-- -- * the given span
+-- rootSpan
+--     :: Ord n => n -> (Pos, Pos)
+--     -> P.ListT (Earley n t) (Passive n t)
+-- rootSpan = Chart.rootSpan chart
 
 
 -- | See `Chart.rootEnd`.
@@ -759,12 +759,16 @@ trySubst p = void $ P.runListT $ do
 #endif
     let pDID = getL dagID p
         pSpan = getL spanP p
-    -- make sure that `p' represents regular rules
-    guard . regular $ pSpan
+--  UPDATE 19.02.2020: no longer necessary to check if `regular`,
+--  check the inference rules
+--     -- make sure that `p' represents regular rules
+--     guard . regular $ pSpan
     -- make sure that `p` does not represent sister tree
     guard $ case pDID of
         Left root -> not (isSister root)
         Right _ -> True
+    -- UPDATE 19.02.202: make sure that `p` has ?ws == False
+    guard . not $ getL ws p
     -- the underlying leaf map
     leafMap <- RWS.gets (leafDID  . automat)
     -- now, we need to choose the DAG node to search for depending on whether
@@ -784,6 +788,8 @@ trySubst p = void $ P.runListT $ do
     -- construct the resultant state
     let q' = setL state j
            . setL (end . spanA) (getL end pSpan)
+           -- UPDATE 19.02.202: handle the gap set
+           . modL' (gaps . spanA) (S.union $ getL gaps pSpan)
            $ q
     -- push the resulting state into the waiting queue
     lift $ pushInduced q' $ Subst p q
@@ -972,16 +978,23 @@ trySisterAdjoin p = void $ P.runListT $ do
 #endif
     let pDID = getL dagID p
         pSpan = getL spanP p
-    -- make sure that `p' is not gapped
-    guard . regular $ pSpan
+--  UPDATE 19.02.2020: no longer necessary to check if `regular`,
+--  check the inference rules
+--     -- make sure that `p' is not gapped
+--     guard . regular $ pSpan
     -- make sure that `p` represents a sister tree
     Left root <- return pDID
     guard $ isSister root
+    -- UPDATE 19.02.202: make sure that `p` has ?ws == False
+    guard . not $ getL ws p
     -- find active items which end where `p' begins and which have the
     -- corresponding LHS non-terminal
     q <- rootEnd (notFootLabel root) (getL beg pSpan)
     -- construct the resultant item with the same state and extended span
-    let q' = setL (end . spanA) (getL end pSpan) $ q
+    let q' = setL (end . spanA) (getL end pSpan)
+           -- UPDATE 19.02.202: handle the gap set
+           . modL' (gaps . spanA) (S.union $ getL gaps pSpan)
+           $ q
     -- push the resulting state into the waiting queue
     lift $ pushInduced q' $ SisterAdjoin p q
 #ifdef DebugOn
@@ -990,6 +1003,56 @@ trySisterAdjoin p = void $ P.runListT $ do
     lift . lift $ do
         endTime <- Time.getCurrentTime
         putStr "[I]  " >> printPassive p hype
+        putStr "  +  " >> printActive q
+        putStr "  :  " >> printActive q'
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
+
+
+--------------------------------------------------
+-- PREDICT WRAPPING
+--------------------------------------------------
+
+
+-- | UPDATE 19.02.2020: new rule!
+-- TODO: add description
+tryPredictWrapping :: (SOrd t, SOrd n) => Passive n t -> Earley n t ()
+tryPredictWrapping p = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- lift . lift $ Time.getCurrentTime
+#endif
+    let pDID = getL dagID p
+        pSpan = getL spanP p
+    -- the underlying dag grammar
+    dag <- RWS.gets (gramDAG . automat)
+    -- make sure that `p` has ?ws == True
+    guard $ getL ws p
+    -- the underlying leaf map
+    leafMap <- RWS.gets (leafDID  . automat)
+    -- now, we need to choose the DAG node to search for
+    nodeNT <- some (nonTerm' pDID dag)
+    theDID <- each . S.toList . maybe S.empty id $ M.lookup nodeNT leafMap
+    -- find active items which end where `p' begins and which
+    -- expect the DAG node provided by `p'
+    q <- expectEnd theDID (getL beg pSpan)
+    -- follow the DAG node
+    j <- follow (getL state q) theDID
+    -- construct the resultant state
+    let pBeg = getL beg pSpan
+        pEnd = getL end pSpan
+        newGap = (pBeg, pEnd)
+        q' = setL state j
+           . setL (end . spanA) pEnd
+           . modL' (gaps . spanA) (S.insert newGap)
+           $ q
+    -- push the resulting state into the waiting queue
+    lift $ pushInduced q' $ PredictWrapping p q
+#ifdef DebugOn
+    -- print logging information
+    hype <- RWS.get
+    lift . lift $ do
+        endTime <- Time.getCurrentTime
+        putStr "[U]  " >> printPassive p hype
         putStr "  +  " >> printActive q
         putStr "  :  " >> printActive q'
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
@@ -1013,13 +1076,13 @@ tryDeactivate p = void $ P.runListT $ do
           then Passive
                { _dagID = Right did
                , _spanP = getL spanA p
-               , _isAdjoinedTo = False }
+               , _ws = DAG.isDNode did dag }
           else check $ do
             x <- mkRoot <$> DAG.label did dag
             return $ Passive
               { _dagID = Left x
               , _spanP = getL spanA p
-              , _isAdjoinedTo = False }
+              , _ws = DAG.isDNode did dag }
   lift $ pushPassive q (Deactivate p)
 #ifdef DebugOn
   -- print logging information
@@ -1058,6 +1121,7 @@ step (ItemP p :-> e) = do
 --       , tryAdjoinCont
 --       , tryAdjoinTerm
       , trySisterAdjoin
+      , tryPredictWrapping
       ]
     savePassive p $ prioTrav e
 step (ItemA p :-> e) = do
@@ -1287,7 +1351,7 @@ earleyAuto auto input = do
         [ Active root Span
             { _beg   = i
             , _end   = i
-            , _gap   = Nothing }
+            , _gaps  = S.empty }
         | i <- [0 .. n - 1]
         , root <- S.toList . A.roots $ gramAuto auto ]
     -- input length
@@ -1359,7 +1423,7 @@ isRecognized input Hype{..} =
         [ True | item <- S.toList done
         , item ^. spanP ^. beg == 0
         , item ^. spanP ^. end == n
-        , isNothing (item ^. spanP ^. gap)
+        , S.null (item ^. spanP ^. gaps)
         -- admit only *fully* recognized trees
         , isRoot (item ^. dagID) ]
         -- , DAG.isRoot (item ^. dagID) (gramDAG automat) ]

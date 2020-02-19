@@ -6,16 +6,18 @@ module NLP.Partage.Earley.Item
 ( Span (..)
 , beg
 , end
-, gap
+, gaps
 , Active (..)
 , state
 , spanA
 , Passive (..)
 , dagID
 , spanP
-, isAdjoinedTo
-, regular
-, auxiliary
+, ws
+-- , isAdjoinedTo
+-- , regular
+, noGaps
+-- , auxiliary
 , isRoot
 
 -- #ifdef DebugOn
@@ -25,9 +27,14 @@ module NLP.Partage.Earley.Item
 ) where
 
 
+import           Control.Monad (forM_)
+
 import           Data.Lens.Light
 import           Data.Maybe             (isJust, isNothing)
 import           Prelude                hiding (span)
+
+-- import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 
 import           Data.DAWG.Ord          (ID)
 
@@ -51,8 +58,8 @@ data Span = Span {
       _beg   :: Pos
     -- | The ending position (or rather the position of the dot).
     , _end   :: Pos
-    -- | Coordinates of the gap (if applies)
-    , _gap   :: Maybe (Pos, Pos)
+    -- | Coordinates of the gaps (if any)
+    , _gaps  :: S.Set (Pos, Pos)
     } deriving (Show, Eq, Ord)
 $( makeLenses [''Span] )
 
@@ -73,20 +80,20 @@ data Passive n t = Passive
     -- fully recognized elementary trees.
   , _spanP :: Span
     -- ^ Span of the chart item
-  , _isAdjoinedTo :: Bool
-    -- ^ Was the node represented by the item already adjoined to?
+  , _ws :: Bool
+    -- ^ TODO: see the inference rules
   } deriving (Show, Eq, Ord)
 $( makeLenses [''Passive] )
 
 
--- | Does it represent regular rules?
-regular :: Span -> Bool
-regular = isNothing . getL gap
+-- | Has no gaps
+noGaps :: Span -> Bool
+noGaps = S.null . getL gaps
 
 
--- | Does it represent auxiliary rules?
-auxiliary :: Span -> Bool
-auxiliary = isJust . getL gap
+-- -- | Does it represent auxiliary rules?
+-- auxiliary :: Span -> Bool
+-- auxiliary = isJust . getL gap
 
 
 -- | Does it represent a root?
@@ -102,13 +109,11 @@ printSpan :: Span -> IO ()
 printSpan span = do
     putStr . show $ getL beg span
     putStr ", "
-    case getL gap span of
-        Nothing -> return ()
-        Just (p, q) -> do
-            putStr $ show p
-            putStr ", "
-            putStr $ show q
-            putStr ", "
+    forM_ (S.toList $ getL gaps span) $ \(p, q) -> do
+        putStr $ show p
+        putStr ", "
+        putStr $ show q
+        putStr ", "
     putStr . show $ getL end span
 
 

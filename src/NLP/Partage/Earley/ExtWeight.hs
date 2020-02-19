@@ -75,6 +75,13 @@ data Trav n t
         , _actArg   :: Active
         -- ^ The active argument of the action
         }
+    | PredictWrapping
+        { _passArg  :: Passive n t
+        -- ^ The passive argument of the action
+        , _actArg   :: Active
+        -- ^ The active argument of the action
+        }
+    -- ^ Pseudo substitution
     | Deactivate
         { _actArg   :: Active
         -- ^ The active argument of the action

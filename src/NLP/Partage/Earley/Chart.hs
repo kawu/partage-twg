@@ -28,7 +28,7 @@ module NLP.Partage.Earley.Chart
 , finalFrom
 , finalFrom'
 , expectEnd
-, rootSpan
+-- , rootSpan
 , rootEnd
 -- , provideBeg'
 -- , provideBegIni
@@ -288,7 +288,7 @@ finalFrom start n Chart{..} =
       [ p
       | p <- M.keys m
       , p ^. dagID == Left root 
-      , regular (p ^. spanP) ]
+      , noGaps (p ^. spanP) ]
   where
     root = NotFoot {notFootLabel = start, isSister = False}
 
@@ -383,28 +383,28 @@ expectEnd getAuto getChart did i = do
     each $ M.keys doneEndLab
 
 
--- | Check if a passive item exists with:
--- * the given root non-terminal value (but not top-level
---   auxiliary)
---   - UPDATE: is it ensured that it is not top-level auxiliary?
---   - UPDATE 17/06/2017: now it is ensured
--- * the given span
-rootSpan
-    :: (Ord n, MS.MonadState s m)
-    => (s -> Chart n t)
-    -> n -> (Pos, Pos)
-    -> P.ListT m (Passive n t)
-rootSpan getChart x (i, j) = do
-    -- Hype{..} <- lift RWS.get
-    Chart{..} <- getChart <$> lift MS.get
-    -- listValues (i, x, j) donePassive
-    p <- each $ case M.lookup (i, x, j) donePassive of
-        Nothing -> []
-        Just m -> M.keys m
-    let pDID = p ^. dagID
-        pSpan = p ^. spanP
-    guard $ auxiliary pSpan <= not (isRoot pDID)
-    return p
+-- -- | Check if a passive item exists with:
+-- -- * the given root non-terminal value (but not top-level
+-- --   auxiliary)
+-- --   - UPDATE: is it ensured that it is not top-level auxiliary?
+-- --   - UPDATE 17/06/2017: now it is ensured
+-- -- * the given span
+-- rootSpan
+--     :: (Ord n, MS.MonadState s m)
+--     => (s -> Chart n t)
+--     -> n -> (Pos, Pos)
+--     -> P.ListT m (Passive n t)
+-- rootSpan getChart x (i, j) = do
+--     -- Hype{..} <- lift RWS.get
+--     Chart{..} <- getChart <$> lift MS.get
+--     -- listValues (i, x, j) donePassive
+--     p <- each $ case M.lookup (i, x, j) donePassive of
+--         Nothing -> []
+--         Just m -> M.keys m
+--     let pDID = p ^. dagID
+--         pSpan = p ^. spanP
+--     guard $ auxiliary pSpan <= not (isRoot pDID)
+--     return p
 
 
 -- | Return all active processed items which:
