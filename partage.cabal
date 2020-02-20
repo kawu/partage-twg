@@ -61,7 +61,7 @@ library
       , NLP.Partage.Earley.ExtWeight
       , NLP.Partage.Earley.Chart
 
---       , NLP.Partage.AStar
+      , NLP.Partage.AStar
 --       , NLP.Partage.AStar.Deriv
 --       , NLP.Partage.AStar.Deriv.Gorn
 -- 
@@ -75,9 +75,9 @@ library
         NLP.Partage.SOrd
       , NLP.Partage.Earley.AutoAP
       , NLP.Partage.AStar.Auto
---       , NLP.Partage.AStar.Heuristic
---       , NLP.Partage.AStar.HeuristicNew
---       , NLP.Partage.AStar.Heuristic.Bag
+      , NLP.Partage.AStar.Heuristic
+      , NLP.Partage.AStar.HeuristicNew
+      , NLP.Partage.AStar.Heuristic.Bag
       , NLP.Partage.AStar.ExtWeight
 
     ghc-options: -Wall

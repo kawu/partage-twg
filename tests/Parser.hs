@@ -20,7 +20,7 @@ import           Data.Maybe              (maybeToList)
 
 import qualified Pipes                   as P
 
--- import qualified NLP.Partage.AStar       as A
+import qualified NLP.Partage.AStar       as A
 -- import qualified NLP.Partage.AStar.Deriv as D
 import qualified NLP.Partage.DAG         as DAG
 import qualified NLP.Partage.Earley      as E
@@ -49,6 +49,30 @@ testEarley =
 --             $ input
     mkGram = DAG.mkGram . map (Arr.first termToSet)
     termToSet = fmap (O.mapTerm $ fmap S.singleton)
+
+
+-- | All the tests of the parsing algorithm.
+testAStar :: TestTree
+testAStar =
+  T.testTree "A*" parser
+  where
+    parser = T.dummyParser
+      { T.recognize = Just recFrom
+      , T.dependencySupport = True 
+      }
+    recFrom gram start input headMap
+      = A.recognizeFrom memoTerm gram (S.singleton start) (posMap input) headMap
+      . A.fromList
+      $ input
+    memoTerm = Memo.wrap
+      (uncurry T.Term)
+      ((,) <$> T.orth <*> T.pos)
+      (Memo.pair memoString (Memo.maybe Memo.integral))
+    memoString = Memo.list Memo.char
+    posMap input = M.fromList $ do
+      tok <- input
+      pos <- maybeToList (T.pos tok)
+      return (tok, pos)
 
 
 -- -- | All the tests of the parsing algorithm.

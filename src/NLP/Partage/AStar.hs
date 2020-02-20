@@ -48,15 +48,16 @@ module NLP.Partage.AStar
 , Span (..)
 , beg
 , end
-, gap
+, gaps
 , ExtWeight (priWeight, gapWeight, estWeight)
 , totalWeight
 , HypeModif (..)
 , ModifType (..)
--- ** Extracting parsed trees
-, parsedTrees
-, fromPassive
-, fromActive
+-- -- ** Extracting parsed trees
+-- , parsedTrees
+-- , fromPassive
+-- , fromActive
+
 -- -- ** Extracting derivation trees
 -- , Deriv
 -- , DerivNode (..)
@@ -86,7 +87,7 @@ module NLP.Partage.AStar
 , prioTrav
 , nonTerm
 , finalFrom
-, isRoot
+-- , isRoot
 
 -- * Provisional
 , Earley
@@ -129,7 +130,7 @@ import qualified Pipes.Prelude              as P
 import           Data.DAWG.Ord (ID)
 
 import           NLP.Partage.SOrd
-import qualified NLP.Partage.Tree       as T
+-- import qualified NLP.Partage.Tree       as T
 import qualified NLP.Partage.Tree.Other as O
 import qualified NLP.Partage.Auto as A
 
@@ -165,7 +166,7 @@ import Debug.Trace (trace)
 -- | Passive or active item.
 data Item n t
     = ItemP (Passive n t)
-    | ItemA Active
+    | ItemA (Active n)
     deriving (Show, Eq, Ord)
 
 
@@ -430,14 +431,14 @@ sumTrav xs = sum
 
 
 -- | Check if the active item is not already processed.
-isProcessedA :: (Ord n, Ord t) => Active -> Earley n t Bool
+isProcessedA :: (Ord n, Ord t) => Active n -> Earley n t Bool
 isProcessedA p = Chart.isProcessedA p . chart <$> RWS.get
 
 
 -- | Mark the active item as processed (`done').
 saveActive
     :: (Ord t, Ord n)
-    => Active
+    => Active n
     -> ExtWeight n t
     -> Earley n t ()
 saveActive p ts =
@@ -450,7 +451,7 @@ saveActive p ts =
 -- present in the hypergraph.
 hasActiveTrav
     :: (Ord t, Ord n)
-    => Active
+    => Active n
     -> S.Set (Trav n t)
     -> Earley n t Bool
 hasActiveTrav p travSet =
@@ -501,7 +502,7 @@ hasPassiveTrav p travSet = do
 -- | Add the active item to the waiting queue.  Check first if it
 -- is not already in the set of processed (`done') states.
 pushActive :: (SOrd t, SOrd n)
-           => Active
+           => Active n
            -- -> ExtWeight n t
            -> DuoWeight        -- ^ Weight of reaching the new item
            -> Maybe (Trav n t) -- ^ Traversal leading to the new item (if any)
@@ -612,7 +613,7 @@ pushPassive p newWeight0 newTrav0 = do
 -- | Add to the waiting queue all items induced from the given item.
 pushInduced
   :: (SOrd t, SOrd n)
-  => Active
+  => Active n
   -> DuoWeight     -- ^ Weight of reaching the new item
   -> Trav n t      -- ^ Traversal leading to the new item
   -> EarleyPipe n t ()
@@ -705,7 +706,7 @@ estimateDistP' p = do
 
 
 -- | Estimate the remaining distance for an active item.
-estimateDistA :: (Ord n, SOrd t) => Active -> Earley n t Weight
+estimateDistA :: (Ord n, SOrd t) => Active n -> Earley n t Weight
 estimateDistA q = do
     H.Esti{..} <- RWS.gets (estiCost . automat)
     let sup = trieAmort (q ^. state)
@@ -715,7 +716,7 @@ estimateDistA q = do
 
 
 -- | Estimate the remaining distance for an active item.
-estimateDistA' :: (Ord n, SOrd t) => Active -> Earley n t (Double, Double, Double)
+estimateDistA' :: (Ord n, SOrd t) => Active n -> Earley n t (Double, Double, Double)
 estimateDistA' q = do
     H.Esti{..} <- RWS.gets (estiCost . automat)
     return $
@@ -737,7 +738,7 @@ amortizedWeight = const $ return zeroWeight
 
 
 -- | Compute the amortized weight of the given passive item.
-amortizedWeight' :: Active -> Earley n t Weight
+amortizedWeight' :: Active n -> Earley n t Weight
 #ifdef NewHeuristic
 amortizedWeight' q = do
   H.Esti{..} <- RWS.gets (estiCost . automat)
@@ -782,7 +783,7 @@ minDepCost tok = do
 -- | See `Chart.expectEnd`.
 expectEnd
     :: (HOrd n, HOrd t) => DID -> Pos
-    -> P.ListT (EarleyPipe n t) (Active, DuoWeight)
+    -> P.ListT (EarleyPipe n t) (Active n, DuoWeight)
 expectEnd = Chart.expectEnd automat chart
 
 
@@ -797,8 +798,15 @@ rootSpan = Chart.rootSpan chart
 
 -- | See `Chart.rootEnd`.
 rootEnd :: (Ord n, Ord t)
-        => n -> Pos -> P.ListT (EarleyPipe n t) (Active, DuoWeight)
-rootEnd = Chart.rootEnd chart
+        => n -> Pos -> P.ListT (EarleyPipe n t) (Active n, DuoWeight)
+rootEnd = Chart.rootEnd automat chart
+
+
+-- | See `Chart.provideBeg`.
+provideBeg
+    :: (Ord n, Ord t) => DID -> Pos
+    -> P.ListT (EarleyPipe n t) (Passive n t, DuoWeight)
+provideBeg = Chart.provideBeg automat chart
 
 
 -- | See `Chart.provideBeg'`.
@@ -810,7 +818,7 @@ provideBeg' = Chart.provideBeg' chart
 
 -- | See `Chart.provideBegIni`.
 provideBegIni
-    :: (Ord n, Ord t) => Either n DID -> Pos
+    :: (Ord n, Ord t) => n -> Pos
     -> P.ListT (EarleyPipe n t) (Passive n t, DuoWeight)
 provideBegIni =
   Chart.provideBegIni automat chart
@@ -843,7 +851,7 @@ auxModifyGap = Chart.auxModifyGap chart
 
 
 -- | Try to perform SCAN on the given active state.
-tryScan :: (SOrd t, SOrd n) => Active -> DuoWeight -> EarleyPipe n t ()
+tryScan :: (SOrd t, SOrd n) => Active n -> DuoWeight -> EarleyPipe n t ()
 tryScan p duo = void $ P.runListT $ do
 #ifdef DebugOn
   begTime <- liftIO $ Time.getCurrentTime
@@ -888,7 +896,7 @@ tryScan p duo = void $ P.runListT $ do
 
 
 -- | Try to scan an empty terminal.
-tryEmpty :: (SOrd t, SOrd n) => Active -> DuoWeight -> EarleyPipe n t ()
+tryEmpty :: (SOrd t, SOrd n) => Active n -> DuoWeight -> EarleyPipe n t ()
 tryEmpty p duo = void $ P.runListT $ do
 #ifdef DebugOn
   begTime <- liftIO $ Time.getCurrentTime
@@ -1089,8 +1097,8 @@ tryPseudoSubst p pw = void $ P.runListT $ do
     -- construct the resultant state
     let q' = setL state j
            . setL (spanA >>> end) (pSpan ^. end)
-           . setL (spanA >>> gap) 
-                    ((pSpan ^. gap) `mplus` (qSpan ^. gap))
+           . setL (spanA >>> gaps)
+                    ((pSpan ^. gaps) `S.union` (qSpan ^. gaps))
            $ q
 
     -- push the resulting state into the waiting queue
@@ -1117,7 +1125,7 @@ tryPseudoSubst p pw = void $ P.runListT $ do
 -- | Reversed `PS` version.
 tryPseudoSubst'
     :: (SOrd t, SOrd n)
-    => Active
+    => Active n
     -> DuoWeight
     -> EarleyPipe n t ()
 tryPseudoSubst' q qw = void $ P.runListT $ do
@@ -1127,7 +1135,7 @@ tryPseudoSubst' q qw = void $ P.runListT $ do
     -- some underlying maps
     auto <- RWS.gets automat
     let dag = gramDAG auto
-        spine = isSpine auto
+--         spine = isSpine auto
 
     -- span of the q item
     let qSpan = q ^. spanA
@@ -1139,43 +1147,22 @@ tryPseudoSubst' q qw = void $ P.runListT $ do
     -- automaton.  Can we bypass this issue?
     (qDID, tranCost, j) <- elems (q ^. state)
 
---     -- Make sure it's a spine and not a foot
---     guard $ spine qDID && not (DAG.isLeaf qDID dag)
-
     -- Make sure it's not a leaf
     guard . not $ DAG.isLeaf qDID dag
 
---     -- NEW: now we know it's not a leaf
---     let qNT = Right qDID
---     qNT <- some $ 
---       if DAG.isLeaf qDID dag
---          then do
---            O.NonTerm x <- DAG.label qDID dag
---            return (Left x)
---          else return (Right qDID)
-
     -- Find processed items which begin where `q` ends and which provide the
     -- DAG node expected by `q`.
-    (p, pw) <-
-      if spine qDID
-         then provideBegAux        qDID  (q ^. spanA ^. end)
-         else provideBegIni (Right qDID) (q ^. spanA ^. end)
+    (p, pw) <- provideBeg qDID (q ^. spanA ^. end)
+--       if spine qDID
+--          then provideBegAux        qDID  (q ^. spanA ^. end)
+--          else provideBegIni (Right qDID) (q ^. spanA ^. end)
     let pSpan = p ^. spanP
---         pDID = p ^. dagID
-
---     NEW: we don't model substitution here
---     -- make sure that if `qDID` is a leaf, only substitution can take place
---     guard $ DAG.isLeaf qDID dag <= DAG.isRoot pDID dag
-
---     NEW: we don't model substitution here
---     -- make sure that `p` does not represent a sister tree
---     guard $ not (isSister' pDID dag)
 
     -- construct the resultant state
     let q' = setL state j
            . setL (end . spanA) (pSpan ^. end)
-           . setL (gap . spanA)
-                    ((pSpan ^. gap) `mplus` (qSpan ^. gap))
+           . setL (gaps . spanA)
+                    ((pSpan ^. gaps) `S.union` (qSpan ^. gaps))
            $ q
 
     -- compute the estimated distance for the resulting state
@@ -1224,8 +1211,10 @@ trySubst p pw = void $ P.runListT $ do
     auto <- RWS.gets automat
     let dag = gramDAG auto
         leafMap = leafDID auto
-    -- make sure that `p' represents regular rules
-    guard . regular $ pSpan
+--  UPDATE 20.02.2020: no longer necessary to check if `regular`,
+--  check the inference rules
+--     -- make sure that `p' represents regular rules
+--     guard . regular $ pSpan
     -- make sure that `p` is good for substitution
     guard $ DAG.isRoot pDID dag
     -- make sure that `p` does not represent sister tree
@@ -1273,7 +1262,7 @@ trySubst p pw = void $ P.runListT $ do
 -- another fully parsed item.
 trySubst'
     :: (SOrd t, SOrd n)
-    => Active
+    => Active n
     -> DuoWeight
     -> EarleyPipe n t ()
 trySubst' q qw = void $ P.runListT $ do
@@ -1297,7 +1286,8 @@ trySubst' q qw = void $ P.runListT $ do
 
     qNT <- some $ do
       O.NonTerm x <- DAG.label qDID dag
-      return (Left x)
+      -- return (Left x)
+      return x
 
     -- Find processed items which begin where `q` ends and which
     -- provide the non-terminal expected by `q`.
@@ -1305,6 +1295,7 @@ trySubst' q qw = void $ P.runListT $ do
     let pDID = p ^. dagID
 
     -- make sure that `pDID` is a root
+    -- TODO: 20.02.2020: is this redundant now?
     guard $ DAG.isRoot pDID dag
 
     -- make sure that `p` does not represent a sister tree
@@ -1547,207 +1538,72 @@ trySubst' q qw = void $ P.runListT $ do
 --------------------------------------------------
 
 
--- | `tryAdjoinInit p q':
--- * `p' is a completed state (regular or auxiliary)
---     ; if `p` auxiliary, then not top-level
--- * `q' not completed and expects a *real* foot
-tryAdjoinInit
-    :: (SOrd n, SOrd t)
-    => Passive n t
-    -> DuoWeight
-    -> EarleyPipe n t ()
-tryAdjoinInit p pw = void $ P.runListT $ do
-#ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
-#endif
-    let pDID = p ^. dagID
-        pSpan = p ^. spanP
-    -- the underlying dag grammar
-    hype <- RWS.get
-    -- dag <- RWS.gets (gramDAG . automat)
-    let dag = gramDAG . automat $ hype
-    -- footMap <- RWS.gets (footDID  . automat)
-    let footMap = footDID  . automat $ hype
-    -- make sure that the corresponding rule is either regular or
-    -- intermediate auxiliary ((<=) used as implication here)
---     guard $ auxiliary pSpan <= not (isRoot pDID)
-    guard $ auxiliary pSpan <= not (DAG.isRoot pDID dag)
-    -- NEW 09.09.2019: make sure `p` does not correspond to a sister node
-    guard . not $ isSister' (p ^. dagID) dag
-    -- find all active items which expect a foot with the given
-    -- symbol and which end where `p` begins
-    footNT <- some (nonTerm' pDID dag)
-    -- what is the corresponding foot DAG ID?
-    footID <- each . S.toList . maybe S.empty id $ M.lookup footNT footMap
-    -- find all active items which expect a foot with the given
-    -- symbol and which end where `p` begins
-    (q, qw) <- expectEnd footID (pSpan ^. beg)
-    -- follow the foot
-    (tranCost, j) <- follow (q ^. state) footID
-    -- construct the resultant state
-    let q' = setL state j
-           . setL (spanA >>> end) (pSpan ^. end)
-           . setL (spanA >>> gap) (Just
-                ( pSpan ^. beg
-                , pSpan ^. end ))
-           $ q
-    -- compute the estimated distance for the resulting state
-    -- -- estDist <- lift . estimateDistA $ q'
-    -- compute the amortized weight of item `p`
-    amortWeight <- lift . lift $ amortizedWeight p
-    -- push the resulting state into the waiting queue
-    let newBeta = addWeight (duoBeta qw) tranCost
-        -- newGap = duoBeta pw + duoGap pw + amortWeight
-        -- TODO: `duaGap qw` should be equal to `0` again!
-        newGap = duoGap qw + duoBeta pw + duoGap pw + amortWeight
-        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
-    lift $ pushInduced q' newDuo
-             (Foot q (nonTermH (p ^. dagID) hype) tranCost)
---     -- push the resulting state into the waiting queue
---     lift $ pushInduced q' $ Foot q p -- -- $ nonTerm foot
-#ifdef CheckMonotonic
-    lift . lift $ testMono "ADJOIN-INIT" (p, pw) (q, qw) (q', newDuo)
-#endif
-#ifdef DebugOn
-    -- print logging information
-    liftIO $ do
-        endTime <- Time.getCurrentTime
-        putStr "[A]  " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
-        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
-        putStr " #W  " >> print newBeta
-        -- putStr " #E  " >> print estDist
-#endif
-
-
--- | Reverse of `tryAdjoinInit` where the given state `q`
--- expects a real foot.
--- * `q' not completed and expects a *real* foot
--- * `p' is a completed state (regular or auxiliary)
---     ; if `p` auxiliary, then not top-level
-tryAdjoinInit'
-    :: (SOrd n, SOrd t)
-    => Active
-    -> DuoWeight
-    -> EarleyPipe n t ()
-tryAdjoinInit' q qw = void $ P.runListT $ do
-#ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
-#endif
-    -- the underlying dag
-    -- dag <- RWS.gets (gramDAG . automat)
-    hype <- RWS.get
-    let dag = gramDAG . automat $ hype
-    -- Retrieve the foot expected by `q`.
-    -- (AuxFoot footNT, _) <- some $ expects' q
-    -- (AuxFoot footNT, tranCost, j) <- elems (q ^. state)
-    (qDID, tranCost, j) <- elems (q ^. state)
-    qNT <- some $ do
-        O.Foot x <- DAG.label qDID dag
-        return x
-    -- Find all passive items which provide the given source
-    -- non-terminal and which begin where `q` ends.
-    (p, pw) <- provideBeg' qNT (q ^. spanA ^. end)
-    let pDID = p ^. dagID
-        pSpan = p ^. spanP
-    -- The retrieved items must not be auxiliary top-level.
-    guard $ auxiliary pSpan <= not (DAG.isRoot pDID dag)
-    -- NEW 09.09.2019: make sure `p` does not correspond to a sister node
-    guard . not $ isSister' (p ^. dagID) dag
-    -- Construct new item
-    let q' = setL state j
-           . setL (spanA >>> end) (pSpan ^. end)
-           . setL (spanA >>> gap) (Just
-                ( pSpan ^. beg
-                , pSpan ^. end ))
-           $ q
-    -- compute the estimated distance for the resulting state
-    -- -- estDist <- lift . estimateDistA $ q'
-    -- compute the amortized weight of item `p`
-    amortWeight <- lift . lift $ amortizedWeight p
-    -- push the resulting state into the waiting queue
-    let newBeta = addWeight (duoBeta qw) tranCost
-        -- newGap = duoBeta pw + duoGap pw + amortWeight
-        -- NEW 28.12.2018:
-        newGap = duoGap qw + duoBeta pw + duoGap pw + amortWeight
-        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
-    lift $ pushInduced q' newDuo
-             (Foot q (nonTermH (p ^. dagID) hype) tranCost)
-#ifdef CheckMonotonic
-    lift . lift $ testMono "ADJOIN-INIT'" (p, pw) (q, qw) (q', newDuo)
-#endif
-#ifdef DebugOn
-    -- print logging information
-    liftIO $ do
-        endTime <- Time.getCurrentTime
-        putStr "[A'] " >> printActive q
-        putStr "  +  " >> printPassive p hype
-        putStr "  :  " >> printActive q'
-        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
-        putStr " #W  " >> print newBeta
-        -- putStr " #E  " >> print estDist
-#endif
-
-
---------------------------------------------------
--- INTERNAL ADJOIN
---------------------------------------------------
-
-
--- -- | `tryAdjoinCont p q':
--- -- * `p' is a completed, auxiliary state
--- -- * `q' not completed and expects a *dummy* foot
--- tryAdjoinCont
+-- -- | `tryAdjoinInit p q':
+-- -- * `p' is a completed state (regular or auxiliary)
+-- --     ; if `p` auxiliary, then not top-level
+-- -- * `q' not completed and expects a *real* foot
+-- tryAdjoinInit
 --     :: (SOrd n, SOrd t)
 --     => Passive n t
 --     -> DuoWeight
 --     -> EarleyPipe n t ()
--- tryAdjoinCont p pw = void $ P.runListT $ do
+-- tryAdjoinInit p pw = void $ P.runListT $ do
 -- #ifdef DebugOn
 --     begTime <- liftIO $ Time.getCurrentTime
 -- #endif
---     hype <- RWS.get
---     let dag = gramDAG . automat $ hype
---         pDID = p ^. dagID
+--     let pDID = p ^. dagID
 --         pSpan = p ^. spanP
---     -- make sure that `p' is indeed an auxiliary item
---     guard . auxiliary $ pSpan
---     -- make sure the label is not a top-level (internal spine
---     -- non-terminal)
---     guard . not $ DAG.isRoot pDID dag
---     -- find all items which expect a spine non-terminal provided
---     -- by `p' and which end where `p' begins
---     -- (q, cost') <- expectEnd pDID (pSpan ^. beg)
---     (q, qw) <- expectEnd pDID (pSpan ^. beg)
---     -- follow the spine non-terminal
---     (tranCost, j) <- follow (q ^. state) pDID
---     -- construct the resulting state; the span of the gap of the
---     -- inner state `p' is copied to the outer state based on `q'
+--     -- the underlying dag grammar
+--     hype <- RWS.get
+--     -- dag <- RWS.gets (gramDAG . automat)
+--     let dag = gramDAG . automat $ hype
+--     -- footMap <- RWS.gets (footDID  . automat)
+--     let footMap = footDID  . automat $ hype
+--     -- make sure that the corresponding rule is either regular or
+--     -- intermediate auxiliary ((<=) used as implication here)
+-- --     guard $ auxiliary pSpan <= not (isRoot pDID)
+--     guard $ auxiliary pSpan <= not (DAG.isRoot pDID dag)
+--     -- NEW 09.09.2019: make sure `p` does not correspond to a sister node
+--     guard . not $ isSister' (p ^. dagID) dag
+--     -- find all active items which expect a foot with the given
+--     -- symbol and which end where `p` begins
+--     footNT <- some (nonTerm' pDID dag)
+--     -- what is the corresponding foot DAG ID?
+--     footID <- each . S.toList . maybe S.empty id $ M.lookup footNT footMap
+--     -- find all active items which expect a foot with the given
+--     -- symbol and which end where `p` begins
+--     (q, qw) <- expectEnd footID (pSpan ^. beg)
+--     -- follow the foot
+--     (tranCost, j) <- follow (q ^. state) footID
+--     -- construct the resultant state
 --     let q' = setL state j
 --            . setL (spanA >>> end) (pSpan ^. end)
---            . setL (spanA >>> gap) (pSpan ^. gap)
+--            . setL (spanA >>> gap) (Just
+--                 ( pSpan ^. beg
+--                 , pSpan ^. end ))
 --            $ q
 --     -- compute the estimated distance for the resulting state
---     -- estDist <- lift . estimateDistA $ q'
+--     -- -- estDist <- lift . estimateDistA $ q'
+--     -- compute the amortized weight of item `p`
+--     amortWeight <- lift . lift $ amortizedWeight p
 --     -- push the resulting state into the waiting queue
---     let newBeta = sumWeight [duoBeta pw, duoBeta qw, tranCost]
---         -- NEW 28.12.2018
---         -- newGap = duoGap pw
---         newGap = duoGap pw + duoGap qw
+--     let newBeta = addWeight (duoBeta qw) tranCost
+--         -- newGap = duoBeta pw + duoGap pw + amortWeight
+--         -- TODO: `duaGap qw` should be equal to `0` again!
+--         newGap = duoGap qw + duoBeta pw + duoGap pw + amortWeight
 --         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
---     lift $ pushInduced q' newDuo (Subst p q tranCost)
+--     lift $ pushInduced q' newDuo
+--              (Foot q (nonTermH (p ^. dagID) hype) tranCost)
 -- --     -- push the resulting state into the waiting queue
--- --     lift $ pushInduced q' $ Subst p q
+-- --     lift $ pushInduced q' $ Foot q p -- -- $ nonTerm foot
 -- #ifdef CheckMonotonic
---     lift . lift $ testMono "ADJOIN-CONT" (p, pw) (q, qw) (q', newDuo)
+--     lift . lift $ testMono "ADJOIN-INIT" (p, pw) (q, qw) (q', newDuo)
 -- #endif
 -- #ifdef DebugOn
---     -- logging info
---     hype <- RWS.get
+--     -- print logging information
 --     liftIO $ do
 --         endTime <- Time.getCurrentTime
---         putStr "[B]  " >> printPassive p hype
+--         putStr "[A]  " >> printPassive p hype
 --         putStr "  +  " >> printActive q
 --         putStr "  :  " >> printActive q'
 --         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
@@ -1756,62 +1612,67 @@ tryAdjoinInit' q qw = void $ P.runListT $ do
 -- #endif
 -- 
 -- 
--- -- | Reversed `tryAdjoinCont`.
--- tryAdjoinCont'
+-- -- | Reverse of `tryAdjoinInit` where the given state `q`
+-- -- expects a real foot.
+-- -- * `q' not completed and expects a *real* foot
+-- -- * `p' is a completed state (regular or auxiliary)
+-- --     ; if `p` auxiliary, then not top-level
+-- tryAdjoinInit'
 --     :: (SOrd n, SOrd t)
 --     => Active
 --     -> DuoWeight
 --     -> EarleyPipe n t ()
--- tryAdjoinCont' q qw = void $ P.runListT $ do
+-- tryAdjoinInit' q qw = void $ P.runListT $ do
 -- #ifdef DebugOn
 --     begTime <- liftIO $ Time.getCurrentTime
 -- #endif
 --     -- the underlying dag
---     dag <- RWS.gets (gramDAG . automat)
---     spine <- RWS.gets (isSpine . automat)
---     -- Retrieve the auxiliary vertebrea expected by `q`
---     -- (qLab@AuxVert{}, tranCost, j) <- elems (q ^. state)
+--     -- dag <- RWS.gets (gramDAG . automat)
+--     hype <- RWS.get
+--     let dag = gramDAG . automat $ hype
+--     -- Retrieve the foot expected by `q`.
+--     -- (AuxFoot footNT, _) <- some $ expects' q
+--     -- (AuxFoot footNT, tranCost, j) <- elems (q ^. state)
 --     (qDID, tranCost, j) <- elems (q ^. state)
---     -- Make sure it's a spine and not a foot
---     guard $ spine qDID && not (DAG.isLeaf qDID dag)
---     -- Find all fully parsed items which provide the given label
---     -- and which begin where `q` ends.
---     (p, pw) <- provideBegAux qDID (q ^. spanA ^. end)
---     let pSpan = p ^. spanP
---     -- construct the resulting state; the span of the gap of the
---     -- inner state `p' is copied to the outer state based on `q'
+--     qNT <- some $ do
+--         O.Foot x <- DAG.label qDID dag
+--         return x
+--     -- Find all passive items which provide the given source
+--     -- non-terminal and which begin where `q` ends.
+--     (p, pw) <- provideBeg' qNT (q ^. spanA ^. end)
+--     let pDID = p ^. dagID
+--         pSpan = p ^. spanP
+--     -- The retrieved items must not be auxiliary top-level.
+--     guard $ auxiliary pSpan <= not (DAG.isRoot pDID dag)
+--     -- NEW 09.09.2019: make sure `p` does not correspond to a sister node
+--     guard . not $ isSister' (p ^. dagID) dag
+--     -- Construct new item
 --     let q' = setL state j
 --            . setL (spanA >>> end) (pSpan ^. end)
---            . setL (spanA >>> gap) (pSpan ^. gap)
+--            . setL (spanA >>> gap) (Just
+--                 ( pSpan ^. beg
+--                 , pSpan ^. end ))
 --            $ q
 --     -- compute the estimated distance for the resulting state
---     -- estDist <- lift . estimateDistA $ q'
+--     -- -- estDist <- lift . estimateDistA $ q'
+--     -- compute the amortized weight of item `p`
+--     amortWeight <- lift . lift $ amortizedWeight p
 --     -- push the resulting state into the waiting queue
---     let newBeta = sumWeight [duoBeta pw, duoBeta qw, tranCost]
---         -- NEW 28.12.2018
---         -- newGap = duoGap pw
---         newGap = duoGap pw + duoGap qw
+--     let newBeta = addWeight (duoBeta qw) tranCost
+--         -- newGap = duoBeta pw + duoGap pw + amortWeight
+--         -- NEW 28.12.2018:
+--         newGap = duoGap qw + duoBeta pw + duoGap pw + amortWeight
 --         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
---     lift $ pushInduced q' newDuo (Subst p q tranCost)
+--     lift $ pushInduced q' newDuo
+--              (Foot q (nonTermH (p ^. dagID) hype) tranCost)
 -- #ifdef CheckMonotonic
---     lift . lift $ testMono "ADJOIN-CONT'" (p, pw) (q, qw) (q', newDuo)
+--     lift . lift $ testMono "ADJOIN-INIT'" (p, pw) (q, qw) (q', newDuo)
 -- #endif
--- -- #ifdef CheckMonotonic
--- --     totalP <- lift $ est2total pw <$> estimateDistP p
--- --     totalQ <- lift $ est2total qw <$> estimateDistA q
--- --     totalQ' <- lift $ est2total newDuo <$> estimateDistA q'
--- --     let tails =  [totalP, totalQ]
--- --     when (any (totalQ' + epsilon <) tails) $ do
--- --       P.liftIO . putStrLn $
--- --         "[ADJOIN-CONT': MONOTONICITY TEST FAILED] TAILS: " ++ show tails ++
--- --         ", HEAD: " ++ show totalQ'
--- -- #endif
 -- #ifdef DebugOn
---     -- logging info
---     hype <- RWS.get
+--     -- print logging information
 --     liftIO $ do
 --         endTime <- Time.getCurrentTime
---         putStr "[B'] " >> printActive q
+--         putStr "[A'] " >> printActive q
 --         putStr "  +  " >> printPassive p hype
 --         putStr "  :  " >> printActive q'
 --         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
@@ -1825,173 +1686,173 @@ tryAdjoinInit' q qw = void $ P.runListT $ do
 --------------------------------------------------
 
 
--- | Adjoin a fully-parsed auxiliary tree represented by `q` to
--- a partially parsed tree represented by a passive item `p`.
-tryAdjoinTerm
-    :: (SOrd t, SOrd n)
-    => Passive n t
-    -> DuoWeight
-    -> EarleyPipe n t ()
-tryAdjoinTerm q qw = void $ P.runListT $ do
-#ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
-#endif
-    let qDID = q ^. dagID
-        qSpan = q ^. spanP
-    -- the underlying dag grammar
-    auto <- RWS.gets automat
-    let dag = gramDAG auto
-    -- make sure the label is top-level, i.e. that
-    -- `qDID` represents a fully parsed (auxiliary) tree
-    guard $ DAG.isRoot qDID dag
-    -- make sure that it is an auxiliary item (by definition only
-    -- auxiliary states have gaps)
-    (gapBeg, gapEnd) <- some $ qSpan ^. gap
-    -- take all passive items with a given span and a given
-    -- root non-terminal (IDs irrelevant); it must not be
-    -- a top-level auxiliary item (which should be guaranteed
-    -- by `rootSpan`)
-    qNonTerm <- some (nonTerm' qDID dag)
-    (p, pw) <- rootSpan qNonTerm (gapBeg, gapEnd)
-    -- NEW 17.04.2019: make sure `p` does not correspond to a sister node
-    guard . not $ isSister' (p ^. dagID) dag
-#ifdef NoAdjunctionRestriction
-    let changeAdjState = id
-#else
-    -- make sure that node represented by `p` was not yet adjoined to
-    guard . not $ getL isAdjoinedTo p
-    let changeAdjState = setL isAdjoinedTo True
-#endif
-    -- check w.r.t. the dependency structure
---     let anchorMap = anchorPos auto
---         headMap = headPos auto
---     let cost = do
---     -- guard . (/= Just False) $ do
---           -- determine the position of the head tree
---           hedPos <- M.lookup (p ^. dagID) anchorMap
---           -- determine the position of the dependent tree
---           depPos <- M.lookup (q ^. dagID) anchorMap
---           -- determine the accepted positions of the dependent tree
---           posMap <- M.lookup depPos headMap
---           -- check if they agree
---           return $ M.lookup hedPos posMap
---     guard $ cost /= Just Nothing
---     let depCost = maybe 0 fromJust cost
-    Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
-
-    -- construct the resulting item
-    let p' = setL (spanP >>> beg) (qSpan ^. beg)
-           . setL (spanP >>> end) (qSpan ^. end)
-           . changeAdjState
-           $ p
-    -- lift $ pushPassive p' $ Adjoin q p
-    -- compute the estimated distance for the resulting state
-    -- estDist <- lift . estimateDistP $ p'
-    -- push the resulting state into the waiting queue
-    let newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
-        newGap = duoGap pw
-        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
-    lift $ pushPassive p' newDuo (Adjoin q p depCost)
-#ifdef CheckMonotonic
-    totalP <- lift . lift $ est2total pw <$> estimateDistP p
-    totalQ <- lift . lift $ est2total qw <$> estimateDistP q
-    totalQ' <- lift . lift $ est2total newDuo <$> estimateDistP p'
-    let tails =  [totalP, totalQ]
-    when (any (totalQ' + epsilon <) tails) $ do
-      P.liftIO . putStrLn $
-        "[ADJOIN-TERM: MONOTONICITY TEST FAILED] TAILS: " ++ show tails ++
-        ", HEAD: " ++ show totalQ'
-#endif
-#ifdef DebugOn
-    hype <- RWS.get
-    liftIO $ do
-        endTime <- Time.getCurrentTime
-        putStr "[C]  " >> printPassive q hype
-        putStr "  +  " >> printPassive p hype
-        putStr "  :  " >> printPassive p' hype
-        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
-        putStr " #W  " >> print newBeta
-        -- putStr " #E  " >> print estDist
-#endif
-
-
--- | Reversed `tryAdjoinTerm`.
-tryAdjoinTerm'
-    :: (SOrd t, SOrd n)
-    => Passive n t
-    -> DuoWeight
-    -> EarleyPipe n t ()
-tryAdjoinTerm' p pw = void $ P.runListT $ do
-#ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
-#endif
-    let pDID = p ^. dagID
-        pSpan = p ^. spanP
-    -- the underlying dag grammar
-    auto <- RWS.gets automat
-    let dag = gramDAG auto
-    -- Ensure that `p` is auxiliary but not top-level
-    guard $ auxiliary pSpan <= not (DAG.isRoot pDID dag)
-    -- NEW 17.04.2019: make sure `p` does not correspond to a sister node
-    guard . not $ isSister' (p ^. dagID) dag
-    -- Retrieve the non-terminal in the p's root
-    pNT <- some $ nonTerm' pDID dag
-    -- Retrieve all completed, top-level items representing auxiliary
-    -- trees which have a specific gap and modify a specific source
-    -- non-terminal.
-    (q, qw) <- auxModifyGap pNT
-        -- (nonTerm $ p ^. label)
-        ( p ^. spanP ^. beg
-        , p ^. spanP ^. end )
-    let qSpan = q ^. spanP
-    -- check w.r.t. the dependency structure
---     let anchorMap = anchorPos auto
---         headMap = headPos auto
---     let cost = do
---           -- determine the position of the head tree
---           hedPos <- M.lookup (p ^. dagID) anchorMap
---           -- determine the position of the dependent tree
---           depPos <- M.lookup (q ^. dagID) anchorMap
---           -- determine the accepted positions of the dependent tree
---           posMap <- M.lookup depPos headMap
---           -- check if they agree
---           return $ M.lookup hedPos posMap
---     guard $ cost /= Just Nothing
---     let depCost = maybe 0 fromJust cost
-    Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
-
-    -- Construct the resulting state:
-    let p' = setL (spanP >>> beg) (qSpan ^. beg)
-           . setL (spanP >>> end) (qSpan ^. end)
-           $ p
-    -- compute the estimated distance for the resulting state
-    -- estDist <- lift . estimateDistP $ p'
-    -- push the resulting state into the waiting queue
-    let newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
-        newGap = duoGap pw
-        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
-    lift $ pushPassive p' newDuo (Adjoin q p depCost)
-#ifdef CheckMonotonic
-    totalP <- lift . lift $ est2total pw <$> estimateDistP p
-    totalQ <- lift . lift $ est2total qw <$> estimateDistP q
-    totalQ' <- lift . lift $ est2total newDuo <$> estimateDistP p'
-    let tails = [totalP, totalQ]
-    when (any (totalQ' + epsilon <) tails) $ do
-      P.liftIO . putStrLn $
-        "[ADJOIN-TERM': MONOTONICITY TEST FAILED] TAILS: " ++ show tails ++
-        ", HEAD: " ++ show totalQ'
-#endif
-#ifdef DebugOn
-    hype <- RWS.get
-    liftIO $ do
-        endTime <- Time.getCurrentTime
-        putStr "[C'] " >> printPassive p hype
-        putStr "  +  " >> printPassive q hype
-        putStr "  :  " >> printPassive p' hype
-        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
-        putStr " #W  " >> print newBeta
-        -- putStr " #E  " >> print estDist
-#endif
+-- -- | Adjoin a fully-parsed auxiliary tree represented by `q` to
+-- -- a partially parsed tree represented by a passive item `p`.
+-- tryAdjoinTerm
+--     :: (SOrd t, SOrd n)
+--     => Passive n t
+--     -> DuoWeight
+--     -> EarleyPipe n t ()
+-- tryAdjoinTerm q qw = void $ P.runListT $ do
+-- #ifdef DebugOn
+--     begTime <- liftIO $ Time.getCurrentTime
+-- #endif
+--     let qDID = q ^. dagID
+--         qSpan = q ^. spanP
+--     -- the underlying dag grammar
+--     auto <- RWS.gets automat
+--     let dag = gramDAG auto
+--     -- make sure the label is top-level, i.e. that
+--     -- `qDID` represents a fully parsed (auxiliary) tree
+--     guard $ DAG.isRoot qDID dag
+--     -- make sure that it is an auxiliary item (by definition only
+--     -- auxiliary states have gaps)
+--     (gapBeg, gapEnd) <- some $ qSpan ^. gap
+--     -- take all passive items with a given span and a given
+--     -- root non-terminal (IDs irrelevant); it must not be
+--     -- a top-level auxiliary item (which should be guaranteed
+--     -- by `rootSpan`)
+--     qNonTerm <- some (nonTerm' qDID dag)
+--     (p, pw) <- rootSpan qNonTerm (gapBeg, gapEnd)
+--     -- NEW 17.04.2019: make sure `p` does not correspond to a sister node
+--     guard . not $ isSister' (p ^. dagID) dag
+-- #ifdef NoAdjunctionRestriction
+--     let changeAdjState = id
+-- #else
+--     -- make sure that node represented by `p` was not yet adjoined to
+--     guard . not $ getL isAdjoinedTo p
+--     let changeAdjState = setL isAdjoinedTo True
+-- #endif
+--     -- check w.r.t. the dependency structure
+-- --     let anchorMap = anchorPos auto
+-- --         headMap = headPos auto
+-- --     let cost = do
+-- --     -- guard . (/= Just False) $ do
+-- --           -- determine the position of the head tree
+-- --           hedPos <- M.lookup (p ^. dagID) anchorMap
+-- --           -- determine the position of the dependent tree
+-- --           depPos <- M.lookup (q ^. dagID) anchorMap
+-- --           -- determine the accepted positions of the dependent tree
+-- --           posMap <- M.lookup depPos headMap
+-- --           -- check if they agree
+-- --           return $ M.lookup hedPos posMap
+-- --     guard $ cost /= Just Nothing
+-- --     let depCost = maybe 0 fromJust cost
+--     Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
+-- 
+--     -- construct the resulting item
+--     let p' = setL (spanP >>> beg) (qSpan ^. beg)
+--            . setL (spanP >>> end) (qSpan ^. end)
+--            . changeAdjState
+--            $ p
+--     -- lift $ pushPassive p' $ Adjoin q p
+--     -- compute the estimated distance for the resulting state
+--     -- estDist <- lift . estimateDistP $ p'
+--     -- push the resulting state into the waiting queue
+--     let newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
+--         newGap = duoGap pw
+--         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
+--     lift $ pushPassive p' newDuo (Adjoin q p depCost)
+-- #ifdef CheckMonotonic
+--     totalP <- lift . lift $ est2total pw <$> estimateDistP p
+--     totalQ <- lift . lift $ est2total qw <$> estimateDistP q
+--     totalQ' <- lift . lift $ est2total newDuo <$> estimateDistP p'
+--     let tails =  [totalP, totalQ]
+--     when (any (totalQ' + epsilon <) tails) $ do
+--       P.liftIO . putStrLn $
+--         "[ADJOIN-TERM: MONOTONICITY TEST FAILED] TAILS: " ++ show tails ++
+--         ", HEAD: " ++ show totalQ'
+-- #endif
+-- #ifdef DebugOn
+--     hype <- RWS.get
+--     liftIO $ do
+--         endTime <- Time.getCurrentTime
+--         putStr "[C]  " >> printPassive q hype
+--         putStr "  +  " >> printPassive p hype
+--         putStr "  :  " >> printPassive p' hype
+--         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+--         putStr " #W  " >> print newBeta
+--         -- putStr " #E  " >> print estDist
+-- #endif
+-- 
+-- 
+-- -- | Reversed `tryAdjoinTerm`.
+-- tryAdjoinTerm'
+--     :: (SOrd t, SOrd n)
+--     => Passive n t
+--     -> DuoWeight
+--     -> EarleyPipe n t ()
+-- tryAdjoinTerm' p pw = void $ P.runListT $ do
+-- #ifdef DebugOn
+--     begTime <- liftIO $ Time.getCurrentTime
+-- #endif
+--     let pDID = p ^. dagID
+--         pSpan = p ^. spanP
+--     -- the underlying dag grammar
+--     auto <- RWS.gets automat
+--     let dag = gramDAG auto
+--     -- Ensure that `p` is auxiliary but not top-level
+--     guard $ auxiliary pSpan <= not (DAG.isRoot pDID dag)
+--     -- NEW 17.04.2019: make sure `p` does not correspond to a sister node
+--     guard . not $ isSister' (p ^. dagID) dag
+--     -- Retrieve the non-terminal in the p's root
+--     pNT <- some $ nonTerm' pDID dag
+--     -- Retrieve all completed, top-level items representing auxiliary
+--     -- trees which have a specific gap and modify a specific source
+--     -- non-terminal.
+--     (q, qw) <- auxModifyGap pNT
+--         -- (nonTerm $ p ^. label)
+--         ( p ^. spanP ^. beg
+--         , p ^. spanP ^. end )
+--     let qSpan = q ^. spanP
+--     -- check w.r.t. the dependency structure
+-- --     let anchorMap = anchorPos auto
+-- --         headMap = headPos auto
+-- --     let cost = do
+-- --           -- determine the position of the head tree
+-- --           hedPos <- M.lookup (p ^. dagID) anchorMap
+-- --           -- determine the position of the dependent tree
+-- --           depPos <- M.lookup (q ^. dagID) anchorMap
+-- --           -- determine the accepted positions of the dependent tree
+-- --           posMap <- M.lookup depPos headMap
+-- --           -- check if they agree
+-- --           return $ M.lookup hedPos posMap
+-- --     guard $ cost /= Just Nothing
+-- --     let depCost = maybe 0 fromJust cost
+--     Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
+-- 
+--     -- Construct the resulting state:
+--     let p' = setL (spanP >>> beg) (qSpan ^. beg)
+--            . setL (spanP >>> end) (qSpan ^. end)
+--            $ p
+--     -- compute the estimated distance for the resulting state
+--     -- estDist <- lift . estimateDistP $ p'
+--     -- push the resulting state into the waiting queue
+--     let newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
+--         newGap = duoGap pw
+--         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
+--     lift $ pushPassive p' newDuo (Adjoin q p depCost)
+-- #ifdef CheckMonotonic
+--     totalP <- lift . lift $ est2total pw <$> estimateDistP p
+--     totalQ <- lift . lift $ est2total qw <$> estimateDistP q
+--     totalQ' <- lift . lift $ est2total newDuo <$> estimateDistP p'
+--     let tails = [totalP, totalQ]
+--     when (any (totalQ' + epsilon <) tails) $ do
+--       P.liftIO . putStrLn $
+--         "[ADJOIN-TERM': MONOTONICITY TEST FAILED] TAILS: " ++ show tails ++
+--         ", HEAD: " ++ show totalQ'
+-- #endif
+-- #ifdef DebugOn
+--     hype <- RWS.get
+--     liftIO $ do
+--         endTime <- Time.getCurrentTime
+--         putStr "[C'] " >> printPassive p hype
+--         putStr "  +  " >> printPassive q hype
+--         putStr "  :  " >> printPassive p' hype
+--         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+--         putStr " #W  " >> print newBeta
+--         -- putStr " #E  " >> print estDist
+-- #endif
 
 
 --------------------------------------------------
@@ -2002,7 +1863,7 @@ tryAdjoinTerm' p pw = void $ P.runListT $ do
 -- | Try to perform DEACTIVATE.
 tryDeactivate
   :: (SOrd t, SOrd n)
-  => Active
+  => Active n
   -> DuoWeight
   -> EarleyPipe n t ()
 tryDeactivate q qw = void $ P.runListT $ do
@@ -2016,7 +1877,8 @@ tryDeactivate q qw = void $ P.runListT $ do
   let p = Passive
           { _dagID = did
           , _spanP = getL spanA q
-          , _isAdjoinedTo = False }
+          -- , _isAdjoinedTo = False }
+          , _ws = DAG.isDNode did dag }
   let finalWeight = DuoWeight
         { duoBeta = duoBeta qw -- + headCost
         -- { duoBeta = duoBeta qw + headCost
@@ -2073,8 +1935,10 @@ trySisterAdjoin p pw = void $ P.runListT $ do
         dag = gramDAG auto
         pDID = getL dagID p
         pSpan = getL spanP p
-    -- make sure that `p' is not gapped
-    guard . regular $ pSpan
+--  UPDATE 20.02.2020: no longer necessary to check if `regular`,
+--  check the inference rules
+--     -- make sure that `p' is not gapped
+--     guard . regular $ pSpan
     -- make sure that `p` represents a sister tree
 --     Left root <- return pDID
     guard $ DAG.isRoot pDID dag && isSister' pDID dag
@@ -2124,7 +1988,7 @@ trySisterAdjoin p pw = void $ P.runListT $ do
 -- | Sister adjunction reversed.
 trySisterAdjoin'
   :: (SOrd t, SOrd n)
-  => Active
+  => Active n
   -> DuoWeight
   -> EarleyPipe n t ()
 trySisterAdjoin' q qw = void $ P.runListT $ do
@@ -2188,89 +2052,89 @@ trySisterAdjoin' q qw = void $ P.runListT $ do
 ---------------------------
 
 
--- | Extract the set of the parsed trees w.r.t. to the given active item.
-fromActive
-  :: (Ord n, Ord t)
-  => Active
-  -> Hype n t
-  -> [[T.Tree n (Maybe (Tok t))]]
-fromActive active hype =
-  case activeTrav active hype of
-    -- Nothing  -> error "fromActive: unknown active item"
-    Nothing  -> case Q.lookup (ItemA active) (waiting hype) of
-      Just _  -> error $
-        "fromActive: active item in the waiting queue"
-        ++ "\n" ++ show active
-      Nothing -> error $
-        "fromActive: unknown active item (not even in the queue)"
-        ++ "\n" ++ show active
-    Just ext -> if S.null (prioTrav ext)
-        then [[]]
-        else concatMap
-            (fromActiveTrav active)
-            (S.toList (prioTrav ext))
-  where
-    fromActiveTrav _p (Scan q t _) =
-        [ T.Leaf (Just t) : ts
-        | ts <- fromActive q hype ]
-    fromActiveTrav _p (Empty q _) =
-        [ T.Leaf Nothing : ts
-        | ts <- fromActive q hype ]
-    fromActiveTrav _p (Foot q x _) =
-        [ T.Branch x [] : ts
-        | ts <- fromActive q hype ]
-    fromActiveTrav _p (Subst qp qa _) =
-        [ t : ts
-        | ts <- fromActive qa hype
-        , t  <- fromPassive qp hype ]
-    fromActiveTrav _p (SisterAdjoin qp qa _) =
-        [ ts' ++ ts
-        | ts  <- fromActive qa hype
-        , ts' <- T.subTrees <$> fromPassive qp hype ]
-    fromActiveTrav _ _ =
-        error "fromActive: impossible fromActiveTrav"
-
-
--- | Extract the set of the parsed trees w.r.t. to the given passive item.
-fromPassive
-  :: (Ord n, Ord t)
-  => Passive n t
-  -> Hype n t
-  -> [T.Tree n (Maybe (Tok t))]
-fromPassive passive hype = concat
-  [ fromPassiveTrav passive trav
-  | ext <- maybeToList $ passiveTrav passive hype
-  , trav <- S.toList (prioTrav ext) ]
-  where
-    fromPassiveTrav _p (Adjoin qa qm _) =
-        [ replaceFoot ini aux
-        | aux <- fromPassive qa hype
-        , ini <- fromPassive qm hype ]
-    fromPassiveTrav p (Deactivate q _) =
-        [ T.Branch
-            (nonTermH (p ^. dagID) hype)
-            (reverse ts)
-        | ts <- fromActive q hype
-        ]
-    fromPassiveTrav _ _ =
-        error "fromPassive: impossible fromPassiveTrav"
-    -- Replace foot (the only non-terminal leaf) by the given initial tree.
-    replaceFoot ini (T.Branch _ []) = ini
-    replaceFoot ini (T.Branch x ts) = T.Branch x $ map (replaceFoot ini) ts
-    replaceFoot _ t@(T.Leaf _)    = t
-
-
--- | Extract the set of parsed trees obtained on the given input
--- sentence.  Should be run on the result of the earley parser.
-parsedTrees
-    :: forall n t. (Ord n, Ord t)
-    => Hype n t     -- ^ Final state of the earley parser
-    -> S.Set n      -- ^ The start symbol set
-    -> Int          -- ^ Length of the input sentence
-    -> [T.Tree n (Maybe (Tok t))]
-parsedTrees hype start n
-    = concatMap (`fromPassive` hype)
-    $ finalFrom start n hype
+-- -- | Extract the set of the parsed trees w.r.t. to the given active item.
+-- fromActive
+--   :: (Ord n, Ord t)
+--   => Active
+--   -> Hype n t
+--   -> [[T.Tree n (Maybe (Tok t))]]
+-- fromActive active hype =
+--   case activeTrav active hype of
+--     -- Nothing  -> error "fromActive: unknown active item"
+--     Nothing  -> case Q.lookup (ItemA active) (waiting hype) of
+--       Just _  -> error $
+--         "fromActive: active item in the waiting queue"
+--         ++ "\n" ++ show active
+--       Nothing -> error $
+--         "fromActive: unknown active item (not even in the queue)"
+--         ++ "\n" ++ show active
+--     Just ext -> if S.null (prioTrav ext)
+--         then [[]]
+--         else concatMap
+--             (fromActiveTrav active)
+--             (S.toList (prioTrav ext))
+--   where
+--     fromActiveTrav _p (Scan q t _) =
+--         [ T.Leaf (Just t) : ts
+--         | ts <- fromActive q hype ]
+--     fromActiveTrav _p (Empty q _) =
+--         [ T.Leaf Nothing : ts
+--         | ts <- fromActive q hype ]
+--     fromActiveTrav _p (Foot q x _) =
+--         [ T.Branch x [] : ts
+--         | ts <- fromActive q hype ]
+--     fromActiveTrav _p (Subst qp qa _) =
+--         [ t : ts
+--         | ts <- fromActive qa hype
+--         , t  <- fromPassive qp hype ]
+--     fromActiveTrav _p (SisterAdjoin qp qa _) =
+--         [ ts' ++ ts
+--         | ts  <- fromActive qa hype
+--         , ts' <- T.subTrees <$> fromPassive qp hype ]
+--     fromActiveTrav _ _ =
+--         error "fromActive: impossible fromActiveTrav"
+-- 
+-- 
+-- -- | Extract the set of the parsed trees w.r.t. to the given passive item.
+-- fromPassive
+--   :: (Ord n, Ord t)
+--   => Passive n t
+--   -> Hype n t
+--   -> [T.Tree n (Maybe (Tok t))]
+-- fromPassive passive hype = concat
+--   [ fromPassiveTrav passive trav
+--   | ext <- maybeToList $ passiveTrav passive hype
+--   , trav <- S.toList (prioTrav ext) ]
+--   where
+--     fromPassiveTrav _p (Adjoin qa qm _) =
+--         [ replaceFoot ini aux
+--         | aux <- fromPassive qa hype
+--         , ini <- fromPassive qm hype ]
+--     fromPassiveTrav p (Deactivate q _) =
+--         [ T.Branch
+--             (nonTermH (p ^. dagID) hype)
+--             (reverse ts)
+--         | ts <- fromActive q hype
+--         ]
+--     fromPassiveTrav _ _ =
+--         error "fromPassive: impossible fromPassiveTrav"
+--     -- Replace foot (the only non-terminal leaf) by the given initial tree.
+--     replaceFoot ini (T.Branch _ []) = ini
+--     replaceFoot ini (T.Branch x ts) = T.Branch x $ map (replaceFoot ini) ts
+--     replaceFoot _ t@(T.Leaf _)    = t
+-- 
+-- 
+-- -- | Extract the set of parsed trees obtained on the given input
+-- -- sentence.  Should be run on the result of the earley parser.
+-- parsedTrees
+--     :: forall n t. (Ord n, Ord t)
+--     => Hype n t     -- ^ Final state of the earley parser
+--     -> S.Set n      -- ^ The start symbol set
+--     -> Int          -- ^ Length of the input sentence
+--     -> [T.Tree n (Maybe (Tok t))]
+-- parsedTrees hype start n
+--     = concatMap (`fromPassive` hype)
+--     $ finalFrom start n hype
 
 
 --------------------------------------------------
@@ -2368,7 +2232,7 @@ earleyAutoGen =
       let q = Active root Span
               { _beg   = i
               , _end   = i
-              , _gap   = Nothing }
+              , _gaps  = S.empty }
       lift $ pushActive q (DuoWeight zeroWeight zeroWeight) Nothing
     -- the computation is performed as long as the waiting queue
     -- is non-empty.
@@ -2408,9 +2272,9 @@ step (ItemP p :-> e) = do
     mapM_ (\f -> f p $ duoWeight e)
       [ trySubst
       , tryPseudoSubst
-      , tryAdjoinInit
-      , tryAdjoinTerm
-      , tryAdjoinTerm'
+--       , tryAdjoinInit
+--       , tryAdjoinTerm
+--       , tryAdjoinTerm'
       , trySisterAdjoin
       -- , trySubstPS
       -- , tryAdjoinCont
@@ -2430,7 +2294,7 @@ step (ItemA p :-> e) = do
       , tryDeactivate
       , trySubst'
       , tryPseudoSubst'
-      , tryAdjoinInit'
+--       , tryAdjoinInit'
       , trySisterAdjoin'
       -- , trySubstPS'
       -- , tryAdjoinCont'
@@ -2445,7 +2309,7 @@ step (ItemA p :-> e) = do
 -- | Return the corresponding set of traversals for an active item.
 activeTrav
   :: (Ord n, Ord t)
-  => Active
+  => Active n
   -> Hype n t
   -> Maybe (ExtWeight n t)
 activeTrav p h = Chart.activeTrav p (chart h)
@@ -2581,8 +2445,8 @@ testMono
     :: (SOrd n, SOrd t)
     => String
     -> (Passive n t, DuoWeight)
-    -> (Active, DuoWeight)
-    -> (Active, DuoWeight)
+    -> (Active n, DuoWeight)
+    -> (Active n, DuoWeight)
     -> Earley n t ()
 testMono opStr (p, pw) (q, qw) (q', newDuo) = do
     distP <- estimateDistP p

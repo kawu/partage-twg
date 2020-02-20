@@ -33,6 +33,7 @@ module NLP.Partage.AStar.Chart
   , expectEnd
   , rootSpan
   , rootEnd
+  , provideBeg
   , provideBeg'
   , provideBegIni
   , provideBegIni'
@@ -269,15 +270,17 @@ finalFrom
     -> [Passive n t]
 finalFrom startSet n auto Chart{..} = do
   (p, _) <- M.toList donePassive
-  guard $ DAG.isRoot (p ^. dagID) dag
-  nt <- maybeToList $ getLabel (p ^. dagID)
-  guard $ nt `S.member` startSet
-  guard $ noGaps (p ^. spanP)
-  guard . not $ isSister' (p ^. dagID) dag
+  guard $ isFinal startSet n auto p
   return p
-  where
-    dag = gramDAG auto
-    getLabel did = labNonTerm =<< DAG.label did dag
+--   guard $ DAG.isRoot (p ^. dagID) dag
+--   nt <- maybeToList $ getLabel (p ^. dagID)
+--   guard $ nt `S.member` startSet
+--   guard $ noGaps (p ^. spanP)
+--   guard . not $ isSister' (p ^. dagID) dag
+--   return p
+--   where
+--     dag = gramDAG auto
+--     getLabel did = labNonTerm =<< DAG.label did dag
 
 
 -- | Return all active processed items which:
@@ -339,19 +342,69 @@ rootSpan getChart x (i, j) = undefined
 -- * end on the given position.
 rootEnd
     :: (Ord n, Ord t, MS.MonadState s m)
-    => (s -> Chart n t)
+    => (s -> Auto n t)
+    -> (s -> Chart n t)
     -> n
     -> Pos
     -> P.ListT m (Active n, DuoWeight)
-rootEnd getChart lhsNT i = undefined
--- rootEnd getChart lhsNT i = do
---     compState <- lift MS.get
---     let ch@Chart{..} = getChart compState
---     doneSet <- some $ M.lookup (i, lhsNT) doneActiveByRoot
---     each $ do
---       q <- S.toList doneSet
---       e <- maybeToList (activeTrav q ch)
---       return (q, duoWeight e)
+rootEnd getAuto getChart lhsNT i = do
+  compState <- lift MS.get
+  let Chart{..} = getChart compState
+      auto = getAuto compState
+      -- dag = gramDAG auto
+  -- loop over each active item
+  (q, e) <- each $ M.toList doneActive
+  -- determine the LHS non-terminal
+  let lhs = lhsNonTerm auto M.! (q ^. state)
+  -- check the necessary constraints
+  guard $ notFootLabel lhs == lhsNT
+  guard $ q ^. spanA ^. end == i
+  -- return the item
+  return (q, duoWeight e)
+--   where
+--     getLabel dag did = labNonTerm =<< DAG.label did dag
+
+
+-- -- | Return all active processed items which:
+-- -- * has the given LHS non-terminal,
+-- -- * end on the given position.
+-- rootEnd
+--     :: (Ord n, Ord t, MS.MonadState s m)
+--     => (s -> Chart n t)
+--     -> n
+--     -> Pos
+--     -> P.ListT m (Active n, DuoWeight)
+-- rootEnd getChart lhsNT i = undefined
+-- -- rootEnd getChart lhsNT i = do
+-- --     compState <- lift MS.get
+-- --     let ch@Chart{..} = getChart compState
+-- --     doneSet <- some $ M.lookup (i, lhsNT) doneActiveByRoot
+-- --     each $ do
+-- --       q <- S.toList doneSet
+-- --       e <- maybeToList (activeTrav q ch)
+-- --       return (q, duoWeight e)
+
+
+-- | NEW 20.02.202: Return all passive items which:
+-- * provide a given DAG label,
+-- * begin on the given position.
+provideBeg
+    :: (Ord n, Ord t, MS.MonadState s m)
+    => (s -> Auto n t)
+    -> (s -> Chart n t)
+    -> DAG.DID -> Pos
+    -> P.ListT m (Passive n t, DuoWeight)
+provideBeg _getAuto getChart x i = do
+  compState <- lift MS.get
+  let Chart{..} = getChart compState
+  -- loop over each passive item
+  (p, e) <- each $ M.toList donePassive
+  -- check the necessary constraints
+  guard $ p ^. dagID == x
+  guard $ p ^. spanP ^. beg == i
+  -- return the item
+  return (p, duoWeight e)
+
 
 
 -- | Return all processed items which:
@@ -388,7 +441,7 @@ provideBeg' getChart x i = undefined
 --             ((M.elems >=> M.toList) m)
 
 
--- | Return all initial passive items which:
+-- | Return all passive items which:
 -- * provide a given label,
 -- * begin on the given position.
 --
@@ -397,12 +450,37 @@ provideBegIni
     :: (Ord n, Ord t, MS.MonadState s m)
     => (s -> Auto n t)
     -> (s -> Chart n t)
-    -- -> Either (NotFoot n) DAG.DID
-    -> Either n DAG.DID
-    -- -> DAG.DID
+    -> n
     -> Pos
     -> P.ListT m (Passive n t, DuoWeight)
-provideBegIni getAuto getChart x i = undefined
+provideBegIni getAuto getChart x i = do
+  compState <- lift MS.get
+  let Chart{..} = getChart compState
+      auto = getAuto compState
+      dag = gramDAG auto
+  -- loop over each passive item
+  (p, e) <- each $ M.toList donePassive
+  -- check the necessary constraints
+  guard $ nonTerm (p ^. dagID) auto == x
+  guard $ p ^. spanP ^. beg == i
+  -- return the item
+  return (p, duoWeight e)
+
+
+-- -- | Return all initial passive items which:
+-- -- * provide a given label,
+-- -- * begin on the given position.
+-- --
+-- -- TODO: Should be better optimized.
+-- provideBegIni
+--     :: (Ord n, Ord t, MS.MonadState s m)
+--     => (s -> Auto n t)
+--     -> (s -> Chart n t)
+--     -- -> Either (NotFoot n) DAG.DID
+--     -> Either n DAG.DID
+--     -- -> DAG.DID
+--     -> Pos
+--     -> P.ListT m (Passive n t, DuoWeight)
 -- provideBegIni getAuto getChart x i = do
 --   compState <- lift MS.get
 --   let Chart{..} = getChart compState
@@ -441,43 +519,41 @@ provideBegIni'
     -> Either (NotFoot n) DAG.DID
     -> Pos
     -> P.ListT m (Passive n t, DuoWeight)
-provideBegIni' getAuto getChart x i = undefined
--- provideBegIni' getAuto getChart x i = do
---   compState <- lift MS.get
---   let Chart{..} = getChart compState
---       auto = getAuto compState
---       dag = gramDAG auto
---       label did =
---         case DAG.label did dag >>= labNonTerm of
---           Just x -> x
---           Nothing -> error "AStar.Chart.provideBegIni': unknown DID"
---       labNonTerm (O.NonTerm y) = Just $ NotFoot
---         { notFootLabel = y
---         , isSister = False }
---       labNonTerm (O.Sister y) = Just $ NotFoot
---         { notFootLabel = y
---         , isSister = True }
---       labNonTerm _ = Nothing
+provideBegIni' getAuto getChart x i = do
+  compState <- lift MS.get
+  let Chart{..} = getChart compState
+      auto = getAuto compState
+      dag = gramDAG auto
+      label did =
+        case DAG.label did dag >>= labNonTerm of
+          Just x -> x
+          Nothing -> error "AStar.Chart.provideBegIni': unknown DID"
+      labNonTerm (O.Sister y) = Just $ NotFoot
+        { notFootLabel = y
+        , isSister = True }
+      labNonTerm (O.NonTerm y) = Just $ NotFoot
+        { notFootLabel = y
+        , isSister = False }
+      labNonTerm (O.DNode y) = Just $ NotFoot
+        { notFootLabel = y
+        , isSister = False }
+      labNonTerm _ = Nothing
 --       n =
 --         case x of
 --           Left nt -> notFootLabel nt
 --           Right did -> nonTerm did auto
---       checkNonTerm qDID =
---         case x of
---           -- Left nt -> nonTerm qDID auto == nt
---           Left nt -> label qDID == nt
---           Right did -> qDID == did
---   each $
---     maybeToList ((M.lookup i >=> M.lookup n) donePassiveIni) >>=
---     M.elems >>=
---     -- maybeToList . M.lookup x >>=
---       ( \m -> do
---           p <-
---             [ (q, duoWeight e)
---             | (q, e) <- M.toList m
---             -- , q ^. dagID == x ]
---             , checkNonTerm $ q ^. dagID ]
---           return p )
+      checkNonTerm qDID =
+        case x of
+          -- Left nt -> nonTerm qDID auto == nt
+          Left nt -> label qDID == nt
+          Right did -> qDID == did
+  -- loop over each passive item
+  (q, e) <- each $ M.toList donePassive
+  -- check the necessary constraints
+  guard . checkNonTerm $ q ^. dagID
+  guard $ q ^. spanP ^. beg == i
+  -- return the item
+  return (q, duoWeight e)
 
 
 -- | Return all auxiliary passive items which:
