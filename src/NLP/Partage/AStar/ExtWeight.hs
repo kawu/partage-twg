@@ -99,6 +99,8 @@ data Trav n t
         , _weight   :: Weight
         -- ^ The traversal weight
         }
+    -- TODO: we don't really need the passive argument, since it performs a
+    -- prediction-related function.  See also `Foot`.
     | PredictWrapping
         { _passArg  :: Passive n t
         -- ^ The passive argument of the action

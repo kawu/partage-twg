@@ -14,11 +14,11 @@ module NLP.Partage.Tree.Other
 -- , SomeTree
 -- , follow
 
--- -- * Conversion
+-- * Conversion
+, mkTree
+, unTree
 -- , encode
 -- , decode
--- , unTree
--- , mkTree
 
 -- * Utils
 , isTerm
@@ -38,7 +38,7 @@ import qualified Data.Foldable as F
 
 import qualified Data.Tree as R
 
--- import qualified NLP.Partage.Tree as T
+import qualified NLP.Partage.Tree as T
 
 
 ---------------------------------------------------------------------
@@ -96,14 +96,14 @@ type Tree n t = R.Tree (Node n t)
 -- encode :: SomeTree n t -> Tree n t
 -- encode (Left t) = unTree t
 -- encode (Right T.AuxTree{..}) = markFoot auxFoot (unTree auxTree)
--- 
--- 
--- -- | Encode the initial tree using the alternative representation.
--- unTree :: T.Tree n t -> Tree n t
--- unTree (T.Branch x xs) = R.Node (NonTerm x) (map unTree xs)
--- unTree (T.Leaf x)    = R.Node (Term x) []
--- 
--- 
+
+
+-- | Encode the initial tree using the alternative representation.
+unTree :: T.Tree n t -> Tree n t
+unTree (T.Branch x xs) = R.Node (NonTerm x) (map unTree xs)
+unTree (T.Leaf x)    = R.Node (Term x) []
+
+
 -- -- | Mark non-terminal under the path as a foot.
 -- markFoot :: T.Path -> Tree n t -> Tree n t
 -- markFoot [] (R.Node (NonTerm x) []) = R.Node (Foot x) []
@@ -126,23 +126,26 @@ type Tree n t = R.Tree (Node n t)
 -- decode t = case findFoot t of
 --     Just is -> Right $ T.AuxTree (mkTree t) is
 --     Nothing -> Left $ mkTree t
--- 
--- 
--- -- | Convert the parsed tree into an LTAG tree.
--- mkTree :: Tree n t -> T.Tree n t
--- mkTree (R.Node n xs) = case n of
---     Term x  -> T.Leaf x
+
+
+-- | Convert the parsed tree into an LTAG tree.
+mkTree :: Tree n t -> T.Tree n t
+mkTree (R.Node n xs) = case n of
+    Term x  -> T.Leaf x
 --     Foot x  -> T.Branch
 --         { T.labelI = x
 --         , T.subTrees = [] }
---     NonTerm x   -> T.Branch
---         { T.labelI = x
---         , T.subTrees = map mkTree xs }
---     Sister x   -> T.Branch
---         { T.labelI = x
---         , T.subTrees = map mkTree xs }
--- 
--- 
+    NonTerm x   -> T.Branch
+        { T.labelI = x
+        , T.subTrees = map mkTree xs }
+    Sister x   -> T.Branch
+        { T.labelI = x
+        , T.subTrees = map mkTree xs }
+    DNode x  -> T.Branch
+        { T.labelI = x
+        , T.subTrees = map mkTree xs }
+
+
 -- -- | Find the path of the foot (if present) in the tree.
 -- findFoot :: Tree n t -> Maybe T.Path
 -- findFoot (R.Node n xs) = case n of

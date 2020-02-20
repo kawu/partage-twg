@@ -14,8 +14,8 @@ module NLP.Partage.Tree
 -- , showTree'
 , project
 
--- * Auxiliary tree
-, AuxTree (..)
+-- -- * Auxiliary tree
+-- , AuxTree (..)
 
 -- * Path
 , Path
@@ -84,20 +84,20 @@ step (Leaf _) _      = Nothing
 step (Branch _ xs) k = xs !? k
 
 
----------------------------------------------------------------------
--- Adjoining
----------------------------------------------------------------------
-
-
--- | An auxiliary tree
-data AuxTree a b = AuxTree
-    { auxTree   :: Tree a b
-    -- ^ The underlying initial tree
-    , auxFoot   :: Path
-    -- ^ The path to the foot node.  Beware that currently it is
-    -- possible to use the `AuxTree` constructor to build an invalid
-    -- auxiliary tree, i.e. with an incorrect `auxFoot` value.
-    } deriving (Show, Eq, Ord)
+-- ---------------------------------------------------------------------
+-- -- Adjoining
+-- ---------------------------------------------------------------------
+-- 
+-- 
+-- -- | An auxiliary tree
+-- data AuxTree a b = AuxTree
+--     { auxTree   :: Tree a b
+--     -- ^ The underlying initial tree
+--     , auxFoot   :: Path
+--     -- ^ The path to the foot node.  Beware that currently it is
+--     -- possible to use the `AuxTree` constructor to build an invalid
+--     -- auxiliary tree, i.e. with an incorrect `auxFoot` value.
+--     } deriving (Show, Eq, Ord)
 
 
 ---------------------------------------------------------------------

@@ -45,7 +45,7 @@ import qualified Pipes                     as P
 -- import qualified NLP.Partage.AStar         as AStar
 -- import qualified NLP.Partage.AStar.Deriv   as Deriv
 import           NLP.Partage.DAG           (Weight)
--- import           NLP.Partage.Tree          (AuxTree (..), Tree (..))
+import           NLP.Partage.Tree          (Tree (..))
 import qualified NLP.Partage.Tree.Other    as O
 
 import qualified NLP.Partage.Format.Brackets as Br
@@ -57,7 +57,7 @@ import qualified NLP.Partage.Format.Brackets as Br
 
 
 -- | Local type aliases.
--- type Tr    = Tree String (Maybe Term)
+type Tr    = Tree String (Maybe Term)
 type OTree = O.Tree String (Maybe Term)
 -- type Hype  = AStar.Hype String Term
 -- type Deriv = Deriv.Deriv Deriv.UnNorm String (Tok Term)
@@ -136,25 +136,26 @@ data TestRes
       -- ^ No parse
     | Yes
       -- ^ Parse
---     | Trees (S.Set Tr)
---       -- ^ Parsing results
+    | Trees (S.Set Tr)
+      -- ^ Parsing results
     deriving (Eq, Ord)
 
 
 instance Show TestRes where
   show No = "No"
   show Yes = "Yes"
---   show (Trees ts) =
---     "{" ++ L.unpack lazyText ++ "}"
---       where
---         showOne = Br.showTree . fmap process . O.unTree
---         lazyText = L.intercalate " " (map showOne $ S.toList ts)
---         -- process (O.Term t) = O.Term . Just . T.pack $ show t
---         process (O.Term (Just t)) = O.Term . Just . T.pack $ show t
---         process (O.Term Nothing) = O.Term Nothing
---         process (O.NonTerm x) = O.NonTerm $ T.pack x
---         process (O.Sister x) = O.Sister $ T.pack x
---         process (O.Foot x) = O.Foot $ T.pack x
+  show (Trees ts) =
+    "{" ++ L.unpack lazyText ++ "}"
+      where
+        showOne = Br.showTree . fmap process . O.unTree
+        lazyText = L.intercalate " " (map showOne $ S.toList ts)
+        -- process (O.Term t) = O.Term . Just . T.pack $ show t
+        process (O.Term (Just t)) = O.Term . Just . T.pack $ show t
+        process (O.Term Nothing) = O.Term Nothing
+        process (O.NonTerm x) = O.NonTerm $ T.pack x
+        process (O.Sister x) = O.Sister $ T.pack x
+        -- process (O.Foot x) = O.Foot $ T.pack x
+        process (O.DNode x) = O.DNode $ T.pack x
     
 
 -- ---------------------------------------------------------------------
@@ -636,23 +637,23 @@ mkGram5 = map (,1)
 gram5Tests :: [Test]
 gram5Tests =
     [ test "S" ("Ben eats pasta") Yes
---     , test "S" ("Ben eats") . Trees . S.singleton $
---       Branch "S"
---       [ Branch "NP"
---         [ Branch "N" [mkLeaf "Ben"] ]
---       , Branch "VP"
---         [ Branch "V" [mkLeaf "eats"] ]
---       ]
---     , test "S" ("Ben vigorously eats pasta") . Trees . S.singleton $
---       Branch "S"
---       [ Branch "NP"
---         [ Branch "N" [mkLeaf "Ben"] ]
---       , Branch "VP"
---         [ Branch "Adv" [mkLeaf "vigorously"]
---         , Branch "V" [mkLeaf "eats"]
---         , Branch "NP"
---           [ Branch "N" [mkLeaf "pasta"] ] ]
---       ]
+    , test "S" ("Ben eats") . Trees . S.singleton $
+        Branch "S"
+        [ Branch "NP"
+          [ Branch "N" [mkLeaf "Ben"] ]
+        , Branch "VP"
+          [ Branch "V" [mkLeaf "eats"] ]
+        ]
+    , test "S" ("Ben vigorously eats pasta") . Trees . S.singleton $
+        Branch "S"
+        [ Branch "NP"
+          [ Branch "N" [mkLeaf "Ben"] ]
+        , Branch "VP"
+          [ Branch "Adv" [mkLeaf "vigorously"]
+          , Branch "V" [mkLeaf "eats"]
+          , Branch "NP"
+            [ Branch "N" [mkLeaf "pasta"] ] ]
+        ]
     , test "S" ("Ben eats pasta vigorously") Yes
     , test "S" ("Ben eats vigorously pasta") Yes
     , test "S" ("vigorously Ben eats pasta") No
@@ -671,7 +672,7 @@ gram5Tests =
       test start sent res = Test start (toks sent) M.empty res
       toks = map tok . words
       tok t = Term t Nothing
---       mkLeaf = Leaf . Just . tok
+      mkLeaf = Leaf . Just . tok
 
 -- To discuss (May 2018):
 -- * allow sister adjunction to the root of a modifier (sister) tree?
@@ -1066,6 +1067,17 @@ mkGram13 = map (,1)
 gram13Tests :: [Test]
 gram13Tests =
     [ test "R" ("b a a b") Yes
+    , test "R" ("b a a b") . Trees . S.singleton $
+        Branch "R"
+        [ Branch "X"
+          [ mkLeaf "b"
+          , Branch "N"
+            [ mkLeaf "a"
+            , mkLeaf "a"
+            ]
+          , mkLeaf "b"
+          ]
+        ]
     , test "R" ("a b") No
     , test "R" ("c a a c") No
     ]
@@ -1073,6 +1085,7 @@ gram13Tests =
       test start sent res = Test start (toks sent) M.empty res
       toks = map tok . words
       tok t = Term t Nothing
+      mkLeaf = Leaf . Just . tok
 
 
 ---------------------------------------------------------------------
@@ -1107,12 +1120,20 @@ mkGram14 = map (,1)
 gram14Tests :: [Test]
 gram14Tests =
     [ test "X" ("c b b c") Yes
+    , test "X" ("c b b c") . Trees . S.singleton $
+        Branch "X"
+        [ mkLeaf "c"
+        , mkLeaf "b"
+        , Branch "A" [mkLeaf "b"]
+        , Branch "B" [mkLeaf "c"]
+        ]
     , test "X" ("c b c b") No
     ]
     where
       test start sent res = Test start (toks sent) M.empty res
       toks = map tok . words
       tok t = Term t Nothing
+      mkLeaf = Leaf . Just . tok
 
 
 ---------------------------------------------------------------------
@@ -1234,19 +1255,19 @@ type RecoP
   -> IO Bool
 
 
--- -- | Parsed trees
--- type ParsedP 
---   = [(OTree, Weight)]
---     -- ^ Weighted grammar
---   -> String
---     -- ^ Start symbol
---   -> [Term]
---     -- ^ Sentence to parse
---   -> M.Map Int (M.Map Int Weight)
---     -- ^ Head map
---   -> IO (S.Set Tr)
--- 
--- 
+-- | Parsed trees
+type ParsedP 
+  = [(OTree, Weight)]
+    -- ^ Weighted grammar
+  -> String
+    -- ^ Start symbol
+  -> [Term]
+    -- ^ Sentence to parse
+  -> M.Map Int (M.Map Int Weight)
+    -- ^ Head map
+  -> IO (S.Set Tr)
+
+
 -- -- | Derivation trees
 -- type DerivP
 --   = [(OTree, Weight)]
@@ -1279,8 +1300,8 @@ type RecoP
 data TagParser = TagParser
   { recognize   :: Maybe RecoP
     -- ^ Recognition function
---   , parsedTrees :: Maybe ParsedP
---     -- ^ Function which retrieves derived trees
+  , parsedTrees :: Maybe ParsedP
+    -- ^ Function which retrieves derived trees
 --   , derivTrees :: Maybe DerivP
 --     -- ^ Function which retrieves derivation trees; the result is a set of
 --     -- derivations but it takes the form of a list so that derivations can be
@@ -1298,7 +1319,7 @@ data TagParser = TagParser
 
 -- | Dummy parser which doesn't provide anything.
 dummyParser :: TagParser
-dummyParser = TagParser Nothing -- Nothing Nothing Nothing Nothing
+dummyParser = TagParser Nothing Nothing -- Nothing Nothing Nothing
   True
 
 
@@ -1318,7 +1339,7 @@ testTree modName TagParser{..} = testGroup modName $ do
       if (not dependencySupport <= M.null (headMap test))
          then testCase (show test) $ do
            testRecognition gram test
---            testParsing gram test
+           testParsing gram test
 --            testDerivsIsSet gram test
 --            testFlyingDerivsIsSet gram test
 --            testDerivsEqual gram test
@@ -1331,11 +1352,11 @@ testTree modName TagParser{..} = testGroup modName $ do
       Just reco -> reco gram startSym testSent headMap @@?= simplify testRes
       _ -> return ()
 
---     -- Check if the set of parsed trees is as expected
---     testParsing gram Test{..} = case (parsedTrees, testRes) of
---         (Just pa, Trees ts) -> pa gram startSym testSent headMap @@?= ts
---         _ -> return ()
--- 
+    -- Check if the set of parsed trees is as expected
+    testParsing gram Test{..} = case (parsedTrees, testRes) of
+        (Just pa, Trees ts) -> pa gram startSym testSent headMap @@?= ts
+        _ -> return ()
+
 --     -- Here we only check if the list of derivations is actually a set
 --     testDerivsIsSet gram Test{..} = case derivTrees of
 --         Just derivs -> do
@@ -1416,7 +1437,7 @@ testTree modName TagParser{..} = testGroup modName $ do
 
     simplify No         = False
     simplify Yes        = True
---     simplify (Trees _)  = True
+    simplify (Trees _)  = True
 --     simplify (WeightedTrees _)
 --                         = True
 

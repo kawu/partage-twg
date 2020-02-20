@@ -53,10 +53,10 @@ module NLP.Partage.AStar
 , totalWeight
 , HypeModif (..)
 , ModifType (..)
--- -- ** Extracting parsed trees
--- , parsedTrees
--- , fromPassive
--- , fromActive
+-- ** Extracting parsed trees
+, parsedTrees
+, fromPassive
+, fromActive
 
 -- -- ** Extracting derivation trees
 -- , Deriv
@@ -106,6 +106,7 @@ import           Control.Monad      (guard, void, (>=>), when, mplus)
 import           Control.Monad.Trans.Class  (lift)
 -- import           Control.Monad.Trans.Maybe  (MaybeT (..))
 import qualified Control.Monad.RWS.Strict   as RWS
+import qualified Control.Monad.State.Strict as State
 import           Control.Category ((>>>), (.))
 
 import           Data.Function              (on)
@@ -130,7 +131,7 @@ import qualified Pipes.Prelude              as P
 import           Data.DAWG.Ord (ID)
 
 import           NLP.Partage.SOrd
--- import qualified NLP.Partage.Tree       as T
+import qualified NLP.Partage.Tree       as T
 import qualified NLP.Partage.Tree.Other as O
 import qualified NLP.Partage.Auto as A
 
@@ -2351,89 +2352,141 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
 ---------------------------
 
 
--- -- | Extract the set of the parsed trees w.r.t. to the given active item.
--- fromActive
---   :: (Ord n, Ord t)
---   => Active
---   -> Hype n t
---   -> [[T.Tree n (Maybe (Tok t))]]
--- fromActive active hype =
---   case activeTrav active hype of
---     -- Nothing  -> error "fromActive: unknown active item"
---     Nothing  -> case Q.lookup (ItemA active) (waiting hype) of
---       Just _  -> error $
---         "fromActive: active item in the waiting queue"
---         ++ "\n" ++ show active
---       Nothing -> error $
---         "fromActive: unknown active item (not even in the queue)"
---         ++ "\n" ++ show active
---     Just ext -> if S.null (prioTrav ext)
---         then [[]]
---         else concatMap
---             (fromActiveTrav active)
---             (S.toList (prioTrav ext))
---   where
---     fromActiveTrav _p (Scan q t _) =
---         [ T.Leaf (Just t) : ts
---         | ts <- fromActive q hype ]
---     fromActiveTrav _p (Empty q _) =
---         [ T.Leaf Nothing : ts
---         | ts <- fromActive q hype ]
+-- | Extract the set of the parsed trees w.r.t. to the given active item.
+fromActive
+  :: (SOrd n, Ord t)
+  => Active n
+  -> Hype n t
+  -> [[T.Tree (Maybe n) (Maybe (Tok t))]]
+fromActive active hype =
+  case activeTrav active hype of
+    Nothing  -> case Q.lookup (ItemA active) (waiting hype) of
+      Just _  -> error $
+        "fromActive: active item in the waiting queue"
+        ++ "\n" ++ show active
+      Nothing -> error $
+        "fromActive: unknown active item (not even in the queue)"
+        ++ "\n" ++ show active
+    Just ext -> if S.null (prioTrav ext)
+        then [[]]
+        else concatMap
+            (fromActiveTrav active)
+            (S.toList (prioTrav ext))
+  where
+    fromActiveTrav _p (Scan q t _) =
+        [ T.Leaf (Just t) : ts
+        | ts <- fromActive q hype ]
+    fromActiveTrav _p (Empty q _) =
+        [ T.Leaf Nothing : ts
+        | ts <- fromActive q hype ]
 --     fromActiveTrav _p (Foot q x _) =
 --         [ T.Branch x [] : ts
 --         | ts <- fromActive q hype ]
---     fromActiveTrav _p (Subst qp qa _) =
---         [ t : ts
---         | ts <- fromActive qa hype
---         , t  <- fromPassive qp hype ]
---     fromActiveTrav _p (SisterAdjoin qp qa _) =
---         [ ts' ++ ts
---         | ts  <- fromActive qa hype
---         , ts' <- T.subTrees <$> fromPassive qp hype ]
---     fromActiveTrav _ _ =
---         error "fromActive: impossible fromActiveTrav"
--- 
--- 
--- -- | Extract the set of the parsed trees w.r.t. to the given passive item.
--- fromPassive
---   :: (Ord n, Ord t)
---   => Passive n t
---   -> Hype n t
---   -> [T.Tree n (Maybe (Tok t))]
--- fromPassive passive hype = concat
---   [ fromPassiveTrav passive trav
---   | ext <- maybeToList $ passiveTrav passive hype
---   , trav <- S.toList (prioTrav ext) ]
---   where
+    fromActiveTrav _p (Subst qp qa _) =
+        [ t : ts
+        | ts <- fromActive qa hype
+        , t  <- fromPassive qp hype ]
+    fromActiveTrav _p (SisterAdjoin qp qa _) =
+        [ ts' ++ ts
+        | ts  <- fromActive qa hype
+        , ts' <- T.subTrees <$> fromPassive qp hype ]
+    fromActiveTrav _p (PredictWrapping qp qa _) =
+        [ T.Branch (Just (nonTermH (qp ^. dagID) hype)) [] : ts
+        | ts <- fromActive qa hype ]
+    fromActiveTrav _ _ =
+        error "fromActive: impossible fromActiveTrav"
+
+
+-- | Extract the set of the parsed trees w.r.t. to the given passive item.
+fromPassive
+  :: (SOrd n, Ord t)
+  => Passive n t
+  -> Hype n t
+  -> [T.Tree (Maybe n) (Maybe (Tok t))]
+fromPassive passive hype = concat
+  [ fromPassiveTrav passive trav
+  | ext <- maybeToList $ passiveTrav passive hype
+  , trav <- S.toList (prioTrav ext) ]
+  where
 --     fromPassiveTrav _p (Adjoin qa qm _) =
 --         [ replaceFoot ini aux
 --         | aux <- fromPassive qa hype
 --         , ini <- fromPassive qm hype ]
---     fromPassiveTrav p (Deactivate q _) =
---         [ T.Branch
---             (nonTermH (p ^. dagID) hype)
---             (reverse ts)
---         | ts <- fromActive q hype
---         ]
---     fromPassiveTrav _ _ =
---         error "fromPassive: impossible fromPassiveTrav"
---     -- Replace foot (the only non-terminal leaf) by the given initial tree.
---     replaceFoot ini (T.Branch _ []) = ini
---     replaceFoot ini (T.Branch x ts) = T.Branch x $ map (replaceFoot ini) ts
---     replaceFoot _ t@(T.Leaf _)    = t
--- 
--- 
--- -- | Extract the set of parsed trees obtained on the given input
--- -- sentence.  Should be run on the result of the earley parser.
--- parsedTrees
---     :: forall n t. (Ord n, Ord t)
---     => Hype n t     -- ^ Final state of the earley parser
---     -> S.Set n      -- ^ The start symbol set
---     -> Int          -- ^ Length of the input sentence
---     -> [T.Tree n (Maybe (Tok t))]
--- parsedTrees hype start n
---     = concatMap (`fromPassive` hype)
---     $ finalFrom start n hype
+    fromPassiveTrav _p (CompleteWrapping qa qm _) =
+      [ replaceSlot ini aux
+      | aux <- rmRoot <$> fromPassive qa hype
+      , ini <- fromPassive qm hype ]
+    fromPassiveTrav p (Deactivate q _) =
+--       | dEdgeParent (p ^. dagID) hype = do
+--           [t] <- fromActive q hype
+--           return t
+--       | otherwise =
+      [ T.Branch
+          (Just (nonTermH (p ^. dagID) hype))
+          (reverse ts)
+      | ts <- fromActive q hype
+      ]
+    -- processDEdge
+    fromPassiveTrav _ _ =
+        error "fromPassive: impossible fromPassiveTrav"
+    -- Replace foot (the only non-terminal leaf) by the given initial tree.
+    -- Mark the root as to-be-removed
+    rmRoot x@T.Branch{} = x {T.labelI = Nothing}
+    rmRoot x@T.Leaf{} = x
+
+
+-- | Replace the first "slot" (substitution node) in the second tree with the
+-- first tree.
+replaceSlot :: T.Tree n t -> T.Tree n t -> T.Tree n t
+replaceSlot plug tree =
+  State.evalState (go tree) True
+  where
+    go t@T.Leaf{} = return t
+    go t@(T.Branch _ []) = do
+      flag <- State.get
+      if flag 
+         then do
+           State.put False
+           return plug
+         else do
+           return t
+    go (T.Branch x ts) = T.Branch x <$> mapM go ts
+
+-- replaceSlot t (T.Branch _ []) = t
+-- replaceSlot t (T.Branch x ts) = T.Branch x $ map (replaceSlot t) ts
+-- replaceSlot _ t@(T.Leaf _)    = t
+
+
+-- | Extract the set of parsed trees obtained on the given input
+-- sentence.  Should be run on the result of the earley parser.
+parsedTrees
+    :: forall n t. (SOrd n, Ord t)
+    => Hype n t     -- ^ Final state of the earley parser
+    -> S.Set n      -- ^ The start symbol set
+    -> Int          -- ^ Length of the input sentence
+    -> [T.Tree n (Maybe (Tok t))]
+parsedTrees hype start n
+  = map process
+  . concatMap (`fromPassive` hype)
+  $ finalFrom start n hype
+  where
+    process t =
+      case removeRedundant t of
+        [t'] -> t'
+        _ -> error "AStar.parsedTrees: no non-terminal in the root"
+
+
+-- | Remove redundant non-terminal nodes.
+removeRedundant :: T.Tree (Maybe n) t -> [T.Tree n t]
+removeRedundant = go
+  where
+    go T.Branch{..} =
+      case labelI of
+        Nothing -> subTrees'
+        Just nt -> [T.Branch nt subTrees']
+      where
+        subTrees' = concatMap go subTrees
+    go (T.Leaf x) = [T.Leaf x]
 
 
 --------------------------------------------------
@@ -2726,6 +2779,16 @@ over i j = take (j - i) . drop i
 -- | Take the non-terminal of the underlying DAG node.
 nonTermH :: DID -> Hype n t -> n
 nonTermH i = Item.nonTerm i . automat
+
+
+-- -- | Check if the given DAG node is a "d-parent".
+-- dEdgeParent :: DID -> Hype n t -> Bool
+-- dEdgeParent i hype =
+--   case DAG.children i dag of
+--     [j] -> DAG.isDNode j dag
+--     _ -> False
+--   where
+--     dag = gramDAG (automat hype)
 
 
 --------------------------------------------------

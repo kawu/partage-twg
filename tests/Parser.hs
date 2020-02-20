@@ -58,12 +58,24 @@ testAStar =
   where
     parser = T.dummyParser
       { T.recognize = Just recFrom
+      , T.parsedTrees = Just parseFrom
       , T.dependencySupport = True 
       }
     recFrom gram start input headMap
       = A.recognizeFrom memoTerm gram (S.singleton start) (posMap input) headMap
       . A.fromList
       $ input
+    parseFrom gram start sent headMap = do
+      let dag = DAG.mkGram gram
+          input = A.fromList sent
+          auto = A.mkAuto memoTerm dag input (posMap sent) headMap
+      hype <- A.earleyAuto auto input
+      return
+        . S.fromList
+        -- below we just map (Tok t -> t) but we have to also
+        -- do the corresponding encoding/decoding
+        . map (O.mkTree . fmap (O.mapTerm $ fmap A.terminal) . O.unTree)
+        $ A.parsedTrees hype (S.singleton start) (length sent)
     memoTerm = Memo.wrap
       (uncurry T.Term)
       ((,) <$> T.orth <*> T.pos)

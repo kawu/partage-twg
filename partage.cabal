@@ -43,8 +43,8 @@ library
       , time                >= 1.5      && < 1.9
 
     exposed-modules:
---         NLP.Partage.Tree
-        NLP.Partage.Tree.Other
+        NLP.Partage.Tree
+      , NLP.Partage.Tree.Other
       , NLP.Partage.DAG
       , NLP.Partage.Auto
       , NLP.Partage.Auto.List
