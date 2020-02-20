@@ -6,17 +6,19 @@ module NLP.Partage.AStar.Item
   ( Span (..)
   , beg
   , end
-  , gap
+  , gaps
   , Active (..)
   , state
   , spanA
   , Passive (..)
   , dagID
   , spanP
-  , isAdjoinedTo
-  , regular
-  , auxiliary
-  , isRoot
+  , ws
+--   , isAdjoinedTo
+--   , regular
+--   , auxiliary
+  , noGaps
+--   , isRoot
 
 -- #ifdef DebugOn
   , printActive
@@ -29,9 +31,12 @@ module NLP.Partage.AStar.Item
 where
 
 
+import           Control.Monad (forM_)
+
 import           Data.Lens.Light
-import           Data.Maybe             (isJust, isNothing)
+-- import           Data.Maybe             (isJust, isNothing)
 import           Prelude                hiding (span)
+import qualified Data.Set as S
 
 import           Data.DAWG.Ord          (ID)
 
@@ -40,24 +45,24 @@ import           NLP.Partage.DAG        (DID)
 import qualified NLP.Partage.DAG as DAG
 
 import           NLP.Partage.AStar.Base (nonTerm')
-import           NLP.Partage.AStar.Auto (Auto (..), NotFoot(..))
+import           NLP.Partage.AStar.Auto (Auto (..))
 
 
-data Span = Span {
+data Span n = Span {
     -- | The starting position.
       _beg :: Pos
     -- | The ending position (or rather the position of the dot).
     , _end :: Pos
-    -- | Coordinates of the gap (if applies)
-    , _gap :: Maybe (Pos, Pos)
+    -- | Set of labeled of the gaps (if any)
+    , _gaps  :: S.Set (Pos, Pos, n)
     } deriving (Show, Eq, Ord)
 $( makeLenses [''Span] )
 
 
 -- | Active chart item : state reference + span.
-data Active = Active {
+data Active n = Active {
       _state :: ID
-    , _spanA :: Span
+    , _spanA :: Span n
     } deriving (Show, Eq, Ord)
 $( makeLenses [''Active] )
 
@@ -66,49 +71,49 @@ $( makeLenses [''Active] )
 data Passive n t = Passive
   { _dagID :: DID
     -- ^ The `DID` of the elementary tree node
-  , _spanP :: Span
+  , _spanP :: Span n
     -- ^ Span of the chart item
-  , _isAdjoinedTo :: Bool
-    -- ^ Was the node represented by the item already adjoined to?
+  , _ws :: Bool
+    -- ^ TODO: see the inference rules
   } deriving (Show, Eq, Ord)
 $( makeLenses [''Passive] )
 
 
--- | Does it represent regular rules?
-regular :: Span -> Bool
-regular = isNothing . getL gap
+-- | Has no gaps
+noGaps :: Span n -> Bool
+noGaps = S.null . getL gaps
 
 
--- | Does it represent auxiliary rules?
-auxiliary :: Span -> Bool
-auxiliary = isJust . getL gap
+-- -- | Does it represent auxiliary rules?
+-- auxiliary :: Span -> Bool
+-- auxiliary = isJust . getL gap
 
 
--- | Does it represent a root?
-isRoot :: Either n DID -> Bool
-isRoot x = case x of
-    Left _  -> True
-    Right _ -> False
+-- -- | Does it represent a root?
+-- isRoot :: Either n DID -> Bool
+-- isRoot x = case x of
+--     Left _  -> True
+--     Right _ -> False
 
 
 -- #ifdef DebugOn
 -- | Print an active item.
-printSpan :: Span -> IO ()
+printSpan :: (Show n) => Span n -> IO ()
 printSpan span = do
     putStr . show $ getL beg span
     putStr ", "
-    case getL gap span of
-        Nothing -> return ()
-        Just (p, q) -> do
-            putStr $ show p
-            putStr ", "
-            putStr $ show q
-            putStr ", "
+    forM_ (S.toList $ getL gaps span) $ \(p, q, x) -> do
+        putStr $ show p
+        putStr ", "
+        putStr $ show q
+        putStr ", "
+        putStr $ show x
+        putStr ", "
     putStr . show $ getL end span
 
 
 -- | Print an active item.
-printActive :: Active -> IO ()
+printActive :: (Show n) => Active n -> IO ()
 printActive p = do
     putStr "("
     putStr . show $ getL state p

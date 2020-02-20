@@ -51,7 +51,7 @@ import           NLP.Partage.DAG        (Weight)
 -- TODO: Weight component can be extracted outside the Trav datatype.
 data Trav n t
     = Scan
-        { scanFrom  :: Active
+        { scanFrom  :: Active n
         -- ^ The input active state
         , _scanTerm :: Tok t
         -- ^ The scanned terminal
@@ -59,7 +59,7 @@ data Trav n t
         -- ^ The traversal weight
         }
     | Empty
-        { scanFrom  :: Active
+        { scanFrom  :: Active n
         -- ^ The input active state
         , _weight   :: Weight
         -- ^ The traversal weight
@@ -67,42 +67,56 @@ data Trav n t
     | Subst
         { passArg :: Passive n t
         -- ^ The passive argument of the action
-        , actArg  :: Active
+        , actArg  :: Active n
         -- ^ The active argument of the action
         , _weight :: Weight
         -- ^ The traversal weight
         }
     -- ^ Pseudo substitution
-    | Foot
-        { actArg  :: Active
+--     | Foot
+--         { actArg  :: Active n
+--         -- ^ The active argument of the action
+--         , theFoot :: n
+--         -- ^ The foot non-terminal
+--         , _weight :: Weight
+--         -- ^ The traversal weight
+--         }
+--     -- ^ Foot adjoin
+--     | Adjoin
+--         { passAdj :: Passive n t
+--         -- ^ The adjoined item
+--         , passMod :: Passive n t
+--         -- ^ The modified item
+--         , _weight   :: Weight
+--         -- ^ The traversal weight
+--         }
+--     -- ^ Adjoin terminate with two passive arguments
+    | SisterAdjoin
+        { passArg  :: Passive n t
+        -- ^ The passive argument of the action
+        , actArg   :: Active n
         -- ^ The active argument of the action
-        , theFoot :: n
-        -- ^ The foot non-terminal
---         , _theFoot  :: Passive n t
---         -- ^ The passive argument of the action
-        , _weight :: Weight
+        , _weight   :: Weight
         -- ^ The traversal weight
         }
-    -- ^ Foot adjoin
-    | Adjoin
-        { passAdj :: Passive n t
-        -- ^ The adjoined item
-        , passMod :: Passive n t
+    | PredictWrapping
+        { _passArg  :: Passive n t
+        -- ^ The passive argument of the action
+        , _actArg   :: Active n
+        -- ^ The active argument of the action
+        , _weight   :: Weight
+        -- ^ The traversal weight
+        }
+    | CompleteWrapping
+        { _passWrp  :: Passive n t
+        -- ^ The wrapping item
+        , _passMod  :: Passive n t
         -- ^ The modified item
         , _weight   :: Weight
         -- ^ The traversal weight
         }
-    -- ^ Adjoin terminate with two passive arguments
-    | SisterAdjoin
-        { passArg  :: Passive n t
-        -- ^ The passive argument of the action
-        , actArg   :: Active
-        -- ^ The active argument of the action
-        , _weight   :: Weight
-        -- ^ The traversal weight
-        }
     | Deactivate
-        { actArg   :: Active
+        { actArg   :: Active n
         -- ^ The active argument of the action
         , _weight :: Weight
         -- ^ The traversal weight

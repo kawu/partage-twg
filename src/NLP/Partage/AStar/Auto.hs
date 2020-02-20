@@ -70,8 +70,8 @@ data Auto n t = Auto
     { gramDAG  :: DAG n t -- DAG (O.Node n t) Weight
     -- ^ The underlying grammar DAG; the weights must be consistent
     -- with what is in the `gramAuto`
-    , isSpine  :: DID -> Bool
-    -- ^ Is the given DAG node a spine node?
+--     , isSpine  :: DID -> Bool
+--     -- ^ Is the given DAG node a spine node?
     , gramAuto :: A.WeiGramAuto n t
     -- ^ The underlying grammar automaton
     , withBody :: M.Map DID (S.Set ID)
@@ -159,12 +159,12 @@ mkAuto memoTerm gram input posMap hedMap =
         (ancPos, ancPos') = mkAnchorPos dag (A.fromWei auto) posMap
     in  Auto
         { gramDAG  = dag
-        , isSpine  = DAG.isSpine dag
+--         , isSpine  = DAG.isSpine dag
         , gramAuto = auto
         , withBody = mkWithBody auto
         -- , termWei  = DAG.termWei gram
         , termDID  = mkTermDID dag
-        , footDID  = mkFootDID dag
+--         , footDID  = mkFootDID dag
         , leafDID  = mkLeafDID dag
         , estiCost = H.mkEsti memoTerm gram auto input posMap hedMap
         , lhsNonTerm = lhsMap
@@ -198,15 +198,15 @@ mkTermDID dag = M.fromListWith S.union
     , O.Term t <- maybeToList (DAG.label i dag) ]
 
 
--- | Create the `footDID` component of the hypergraph.
-mkFootDID
-    :: (Ord n)
-    => DAG n t
-    -> M.Map n (S.Set DID)
-mkFootDID dag = M.fromListWith S.union
-    [ (x, S.singleton i)
-    | i <- S.toList (DAG.nodeSet dag)
-    , O.Foot x <- maybeToList (DAG.label i dag) ]
+-- -- | Create the `footDID` component of the hypergraph.
+-- mkFootDID
+--     :: (Ord n)
+--     => DAG n t
+--     -> M.Map n (S.Set DID)
+-- mkFootDID dag = M.fromListWith S.union
+--     [ (x, S.singleton i)
+--     | i <- S.toList (DAG.nodeSet dag)
+--     , O.Foot x <- maybeToList (DAG.label i dag) ]
 
 
 -- | Create the `leafDID` component of the hypergraph.

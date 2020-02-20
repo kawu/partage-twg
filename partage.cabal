@@ -65,20 +65,20 @@ library
 --       , NLP.Partage.AStar.Deriv
 --       , NLP.Partage.AStar.Deriv.Gorn
 -- 
---       , NLP.Partage.AStar.Base
---       , NLP.Partage.AStar.Item
---       , NLP.Partage.AStar.Chart
+      , NLP.Partage.AStar.Base
+      , NLP.Partage.AStar.Item
+      , NLP.Partage.AStar.Chart
 
       , NLP.Partage.Format.Brackets
 
     other-modules:
         NLP.Partage.SOrd
       , NLP.Partage.Earley.AutoAP
---       , NLP.Partage.AStar.Auto
+      , NLP.Partage.AStar.Auto
 --       , NLP.Partage.AStar.Heuristic
 --       , NLP.Partage.AStar.HeuristicNew
 --       , NLP.Partage.AStar.Heuristic.Bag
---       , NLP.Partage.AStar.ExtWeight
+      , NLP.Partage.AStar.ExtWeight
 
     ghc-options: -Wall
 

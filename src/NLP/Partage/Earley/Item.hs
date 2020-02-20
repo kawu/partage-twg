@@ -58,7 +58,7 @@ data Span n = Span {
       _beg   :: Pos
     -- | The ending position (or rather the position of the dot).
     , _end   :: Pos
-    -- | Coordinates of the gaps (if any)
+    -- | Set of labeled of the gaps (if any)
     , _gaps  :: S.Set (Pos, Pos, n)
     } deriving (Show, Eq, Ord)
 $( makeLenses [''Span] )
@@ -113,6 +113,8 @@ printSpan span = do
         putStr $ show p
         putStr ", "
         putStr $ show q
+        putStr ", "
+        putStr $ show x
         putStr ", "
     putStr . show $ getL end span
 

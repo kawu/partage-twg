@@ -58,49 +58,15 @@ instance Ord (Tok t) where
   compare = compare `on` position
 
 
--- -- | Input of the parser.
--- data Input t = Input {
---       inputSent :: V.Vector (S.Set t)
---     -- ^ The input sentence
---     , lexGramI  :: t -> S.Set t
---     -- ^ Lexicon grammar interface: each terminal @t@ in the
---     -- `inputSent` can potentially represent several different
---     -- terminals (anchors) at the level of the grammar.
---     -- If equivalent to `id`, no lexicon-grammar interface is used.
---     -- Otherwise, type @t@ represents both anchors and real terminals
---     -- (words from input sentences).
---     }
-
-
 -- | Construct `Input` from a list of terminals.
 fromList :: [t] -> Input t
 fromList = Input . map (uncurry Tok) . zip [0..]
 -- fromList = fromSets . map S.singleton
 
 
--- -- | Construct `Input` from a list of sets of terminals, each set
--- -- representing all possible interpretations of a given word.
--- fromSets :: [S.Set t] -> Input t
--- -- fromSets xs = Input (V.fromList xs) (\t -> S.singleton t)
--- fromSets xs = Input (V.fromList xs)
-
-
--- -- | Set the lexicon-grammar interface to
--- setLexGramI :: Input t ->
-
-
 --------------------------------------------------
 -- Utils
 --------------------------------------------------
-
-
--- -- | Take the non-terminal of the underlying DAG node.
--- nonTerm :: DAG.DID -> Auto n t -> n
--- nonTerm i =
---     check . nonTerm' i . gramDAG
---   where
---     check Nothing  = error "nonTerm: not a non-terminal ID"
---     check (Just x) = x
 
 
 -- | Take the non-terminal of the underlying DAG node.
@@ -124,5 +90,6 @@ isSister' did dag = isJust $ do
 labNonTerm :: O.Node n t -> Maybe n
 labNonTerm (O.NonTerm y) = Just y
 labNonTerm (O.Sister y) = Just y
-labNonTerm (O.Foot y) = Just y
+-- labNonTerm (O.Foot y) = Just y
+labNonTerm (O.DNode y) = Just y
 labNonTerm _ = Nothing
