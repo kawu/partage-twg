@@ -385,8 +385,9 @@ expectEnd getAuto getChart did i = do
 
 
 -- | Check if a passive item exists with:
--- * the given root non-terminal value
+-- * the given non-terminal value
 -- * the given span
+-- TODO: It should not be called `rootSpan`, it returns also non-root items!
 rootSpan
     :: (Ord n, MS.MonadState s m)
     => (s -> Chart n t)

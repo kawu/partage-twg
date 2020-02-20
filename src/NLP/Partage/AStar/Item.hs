@@ -102,14 +102,16 @@ printSpan :: (Show n) => Span n -> IO ()
 printSpan span = do
     putStr . show $ getL beg span
     putStr ", "
+    putStr . show $ getL end span
+    putStr ", ["
     forM_ (S.toList $ getL gaps span) $ \(p, q, x) -> do
         putStr $ show p
         putStr ", "
         putStr $ show q
         putStr ", "
         putStr $ show x
-        putStr ", "
-    putStr . show $ getL end span
+        putStr "; "
+    putStr "]"
 
 
 -- | Print an active item.

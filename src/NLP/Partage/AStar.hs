@@ -793,7 +793,7 @@ expectEnd = Chart.expectEnd automat chart
 rootSpan
     :: Ord n => n -> (Pos, Pos)
     -> P.ListT (EarleyPipe n t) (Passive n t, DuoWeight)
-rootSpan = Chart.rootSpan chart
+rootSpan = Chart.rootSpan automat chart
 
 
 -- | See `Chart.rootEnd`.
@@ -860,7 +860,7 @@ tryScan p duo = void $ P.runListT $ do
   -- the state
   tok <- readInput $ getL (spanA >>> end) p
 --   -- determine the minimal cost of `tok` being a dependent
---   depCost <- lift . lift $ minDepCost tok
+--   depCost <- liftIO $ minDepCost tok
   -- follow appropriate terminal transition outgoing from the
   -- given automaton state
   (termCost, j) <- followTerm (getL state p) (Just $ terminal tok)
@@ -1219,6 +1219,8 @@ trySubst p pw = void $ P.runListT $ do
     guard $ DAG.isRoot pDID dag
     -- make sure that `p` does not represent sister tree
     guard . not $ isSister' pDID dag
+    -- UPDATE 20.02.202: make sure that `p` has ?ws == False
+    guard . not $ getL ws p
     -- now, we need to choose the DAG node to search for
     (theDID, depCost) <- do
       -- take the `DID` of a leaf with the appropriate non-terminal
@@ -1232,9 +1234,11 @@ trySubst p pw = void $ P.runListT $ do
     (q, qw) <- expectEnd theDID (getL beg pSpan)
     -- follow the transition symbol
     (tranCost, j) <- follow (q ^. state) theDID
-    -- construct the resultant state
+    -- construct the resulting state
     let q' = setL state j
            . setL (spanA >>> end) (pSpan ^. end)
+           -- UPDATE 20.02.202: handle the gap set
+           . modL' (spanA >>> gaps) (S.union $ getL gaps pSpan)
            $ q
     -- push the resulting state into the waiting queue
     let newBeta = sumWeight [duoBeta pw, duoBeta qw, tranCost, depCost]
@@ -1284,9 +1288,9 @@ trySubst' q qw = void $ P.runListT $ do
     -- Make sure that `qDID` is a leaf
     guard $ DAG.isLeaf qDID dag
 
+    -- Determine the corresponding non-terminal
     qNT <- some $ do
       O.NonTerm x <- DAG.label qDID dag
-      -- return (Left x)
       return x
 
     -- Find processed items which begin where `q` ends and which
@@ -1295,11 +1299,13 @@ trySubst' q qw = void $ P.runListT $ do
     let pDID = p ^. dagID
 
     -- make sure that `pDID` is a root
-    -- TODO: 20.02.2020: is this redundant now?
     guard $ DAG.isRoot pDID dag
 
     -- make sure that `p` does not represent a sister tree
     guard $ not (isSister' pDID dag)
+
+    -- UPDATE 20.02.202: make sure that `p` has ?ws == False
+    guard . not $ getL ws p
 
     -- verify that the substitution is OK w.r.t. the dependency info
     Just depCost <- lift $ omega (p ^. dagID) qDID
@@ -1308,6 +1314,8 @@ trySubst' q qw = void $ P.runListT $ do
     -- construct the resultant state
     let q' = setL state j
            . setL (end . spanA) (pSpan ^. end)
+           -- UPDATE 20.02.202: handle the gap set
+           . modL' (gaps . spanA) (S.union $ getL gaps pSpan)
            $ q
 
     -- push the resulting state into the waiting queue
@@ -1942,6 +1950,8 @@ trySisterAdjoin p pw = void $ P.runListT $ do
     -- make sure that `p` represents a sister tree
 --     Left root <- return pDID
     guard $ DAG.isRoot pDID dag && isSister' pDID dag
+    -- UPDATE 19.02.202: make sure that `p` has ?ws == False
+    guard . not $ getL ws p
     -- find active items which end where `p' begins and which have the
     -- corresponding LHS non-terminal
 --     (q, qw) <- rootEnd (notFootLabel root) (getL beg pSpan)
@@ -1964,7 +1974,10 @@ trySisterAdjoin p pw = void $ P.runListT $ do
     Just depCost <- lift $ omega' (p ^. dagID) (q ^. state)
 
     -- construct the resultant item with the same state and extended span
-    let q' = setL (end . spanA) (getL end pSpan) $ q
+    let q' = setL (end . spanA) (getL end pSpan)
+           -- UPDATE 19.02.202: handle the gap set
+           . modL' (gaps . spanA) (S.union $ getL gaps pSpan)
+           $ q
         newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
         newGap = duoGap qw
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
@@ -2044,6 +2057,236 @@ trySisterAdjoin' q qw = void $ P.runListT $ do
       putStr "  +  " >> printActive q
       putStr "  :  " >> printActive q'
       putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
+
+
+--------------------------------------------------
+-- PREDICT WRAPPING
+--
+-- UPDATE 20.02.2020: new rule!
+--------------------------------------------------
+
+
+-- | TODO: add description
+tryPredictWrapping 
+  :: (SOrd t, SOrd n)
+  => Passive n t
+  -> DuoWeight
+  -> EarleyPipe n t ()
+tryPredictWrapping p pw = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- liftIO $ Time.getCurrentTime
+#endif
+    let pDID = getL dagID p
+        pSpan = getL spanP p
+    -- the underlying dag grammar
+    dag <- RWS.gets (gramDAG . automat)
+    -- make sure that `p` has ?ws == True
+    guard $ getL ws p
+    -- the underlying leaf map
+    leafMap <- RWS.gets (leafDID  . automat)
+    -- now, we need to choose the DAG node to search for
+    nodeNT <- some (nonTerm' pDID dag)
+    theDID <- each . S.toList . maybe S.empty id $ M.lookup nodeNT leafMap
+    -- find active items which end where `p' begins and which
+    -- expect the DAG node provided by `p'
+    (q, qw) <- expectEnd theDID (getL beg pSpan)
+    -- follow the DAG node
+    (tranCost, j) <- follow (getL state q) theDID
+    -- construct the resulting state
+    let pBeg = getL beg pSpan
+        pEnd = getL end pSpan
+        newGap = (pBeg, pEnd, nodeNT)
+        q' = setL state j
+           . setL (end . spanA) pEnd
+           . modL' (gaps . spanA) (S.insert newGap)
+           $ q
+    -- compute the amortized weight of item `p`
+    amortWeight <- lift . lift $ amortizedWeight p
+    -- push the resulting state into the waiting queue
+    let newBeta = addWeight (duoBeta qw) tranCost
+        -- TODO: `duaGap qw` should be equal to `0`?
+        newGap = sumWeight [duoGap qw, duoBeta pw, duoGap pw, amortWeight]
+        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
+    -- push the resulting state into the waiting queue
+    -- liftIO $ putStrLn "==>> PW !!" 
+    lift $ pushInduced q' newDuo (PredictWrapping p q tranCost)
+#ifdef DebugOn
+    -- print logging information
+    hype <- RWS.get
+    liftIO $ do
+        endTime <- Time.getCurrentTime
+        putStr "[P]  " >> printPassive p hype
+        putStr "  +  " >> printActive q
+        putStr "  :  " >> printActive q'
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
+
+
+-- | The alternative `tryPredictWrapping`
+tryPredictWrapping'
+  :: (SOrd t, SOrd n)
+  => Active n
+  -> DuoWeight
+  -> EarleyPipe n t ()
+tryPredictWrapping' q qw = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- liftIO $ Time.getCurrentTime
+#endif
+
+    -- some underlying maps
+    auto <- RWS.gets automat
+    let dag = gramDAG auto
+        leafMap = leafDID auto
+
+    -- Learn what non-terminals `q` actually expects.
+    (qDID, tranCost, j) <- elems (q ^. state)
+
+    -- Make sure that `qDID` is a leaf
+    guard $ DAG.isLeaf qDID dag
+
+    -- Determine the corresponding non-terminal
+    qNT <- some $ do
+      O.NonTerm x <- DAG.label qDID dag
+      return x
+
+    -- Find processed items which:
+    -- (a) begin where `q` ends, and which          (OK)
+    -- (b) provide the non-terminal expected by `q` (OK)
+    (p, pw) <- provideBegIni qNT (q ^. spanA ^. end)
+    let pDID = p ^. dagID
+        pSpan = p ^. spanP
+
+    -- make sure that `p` has ?ws == True
+    guard $ getL ws p
+
+    ---------------------------------
+    -- FINISHED HERE
+    ---------------------------------
+
+--     let pDID = getL dagID p
+--         pSpan = getL spanP p
+--     -- the underlying dag grammar
+--     dag <- RWS.gets (gramDAG . automat)
+-- 
+--     -- the underlying leaf map
+--     leafMap <- RWS.gets (leafDID  . automat)
+--     -- now, we need to choose the DAG node to search for
+--     nodeNT <- some (nonTerm' pDID dag)
+--     theDID <- each . S.toList . maybe S.empty id $ M.lookup nodeNT leafMap
+--     -- find active items which end where `p' begins and which
+--     -- expect the DAG node provided by `p'
+--     (q, qw) <- expectEnd theDID (getL beg pSpan)
+--     -- follow the DAG node
+--     (tranCost, j) <- follow (getL state q) theDID
+
+    -- construct the resulting state
+    let pBeg = getL beg pSpan
+        pEnd = getL end pSpan
+        -- TODO: is qNT correct?  see also `tryPredictWrapping`
+        newGap = (pBeg, pEnd, qNT)
+        q' = setL state j
+           . setL (end . spanA) pEnd
+           . modL' (gaps . spanA) (S.insert newGap)
+           $ q
+    -- compute the amortized weight of item `p`
+    amortWeight <- lift . lift $ amortizedWeight p
+    -- push the resulting state into the waiting queue
+    let newBeta = addWeight (duoBeta qw) tranCost
+        -- TODO: `duaGap qw` should be equal to `0`?
+        newGap = sumWeight [duoGap qw, duoBeta pw, duoGap pw, amortWeight]
+        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
+    -- push the resulting state into the waiting queue
+    -- liftIO $ putStrLn "==>> PW !!" 
+    lift $ pushInduced q' newDuo (PredictWrapping p q tranCost)
+#ifdef DebugOn
+    -- print logging information
+    hype <- RWS.get
+    liftIO $ do
+        endTime <- Time.getCurrentTime
+        putStr "[P'] " >> printPassive p hype
+        putStr "  +  " >> printActive q
+        putStr "  :  " >> printActive q'
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
+
+
+--------------------------------------------------
+-- COMPLETE WRAPPING
+--
+-- UPDATE 20.02.2020: new rule!
+--------------------------------------------------
+
+
+-- | Wrap a fully-parsed tree represented by `q` over a partially parsed
+-- tree represented by `p`.
+tryCompleteWrapping
+  :: (SOrd t, SOrd n)
+  => Passive n t
+  -> DuoWeight
+  -> EarleyPipe n t ()
+tryCompleteWrapping q qw = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- liftIO $ Time.getCurrentTime
+#endif
+    -- let qLab = q ^. label
+    let qDID = q ^. dagID
+        qSpan = q ^. spanP
+    -- the underlying dag grammar
+    dag <- RWS.gets (gramDAG . automat)
+    parMap <- RWS.gets (dagParMap . automat)
+    -- make sure the label is top-level
+    guard $ DAG.isRoot qDID dag
+    -- for each available gap
+    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+--     -- TEMP BEG
+--     hype <- RWS.get
+--     liftIO $ do
+--       putStrLn "########## CW1>>"
+--       printPassive q hype
+--       putStrLn "########## <<CW1"
+--     -- TEMP END
+    -- TODO: add desc
+    qNonTerm <- some (nonTerm' qDID dag)
+    -- take all passive items with a given span and a given
+    -- root non-terminal (IDs irrelevant)
+    (p, pw) <- rootSpan gapNT (gapBeg, gapEnd)
+    -- make sure that `p` has ?ws == True
+    guard $ getL ws p
+    -- verify the label of the parent
+    parIdSet <- some $ M.lookup (p ^. dagID) parMap
+    if (S.size parIdSet > 1)
+       then error "tryCompleteWrapping: d-daughter node with several parents"
+       else return ()
+    parID <- each (S.toList parIdSet)
+    parNonTerm <- some (labNonTerm =<< DAG.label parID dag) -- parID dag)
+    guard $ qNonTerm == parNonTerm
+    -- check the operation w.r.t. the dependency info
+    Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
+    -- calculate the new set of gaps
+    let newGaps = S.union (p ^. spanP ^. gaps)
+                . S.delete gap
+                $ qSpan ^. gaps
+    -- construct the resulting item
+    let p' = setL (spanP >>> beg) (qSpan ^. beg)
+           . setL (spanP >>> end) (qSpan ^. end)
+           . setL (spanP >>> gaps) newGaps
+           . setL ws False
+           $ p
+    -- calculate the resulting weights
+    let newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
+        newGap = duoGap qw
+        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
+    -- push the resulting state into the waiting queue
+    lift $ pushPassive p' newDuo (CompleteWrapping q p depCost)
+#ifdef DebugOn
+    hype <- RWS.get
+    liftIO $ do
+        endTime <- Time.getCurrentTime
+        putStr "[C]  " >> printPassive q hype
+        putStr "  +  " >> printPassive p hype
+        putStr "  :  " >> printPassive p' hype
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
 
@@ -2276,6 +2519,8 @@ step (ItemP p :-> e) = do
 --       , tryAdjoinTerm
 --       , tryAdjoinTerm'
       , trySisterAdjoin
+      , tryPredictWrapping
+      , tryCompleteWrapping
       -- , trySubstPS
       -- , tryAdjoinCont
       ]
@@ -2296,6 +2541,7 @@ step (ItemA p :-> e) = do
       , tryPseudoSubst'
 --       , tryAdjoinInit'
       , trySisterAdjoin'
+      , tryPredictWrapping'
       -- , trySubstPS'
       -- , tryAdjoinCont'
       ]

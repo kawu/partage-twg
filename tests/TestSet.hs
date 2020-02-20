@@ -1208,11 +1208,11 @@ testSuite =
   , (mkGram8, gram8Tests)
   , (mkGram9, gram9Tests)
   , (mkGram10, gram10Tests)
---   , (mkGram12, gram12Tests)
---   , (mkGram13, gram13Tests)
---   , (mkGram14, gram14Tests)
---   , (mkGram15, gram15Tests)
---   , (mkGram16, gram16Tests)
+  , (mkGram12, gram12Tests)
+  , (mkGram13, gram13Tests)
+  , (mkGram14, gram14Tests)
+  , (mkGram15, gram15Tests)
+  , (mkGram16, gram16Tests)
   ]
 
 

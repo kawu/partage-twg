@@ -138,6 +138,10 @@ data Auto n t = Auto
 
 --     , depEsti :: H.DepEsti
 --     -- ^ Dependency-related heuristic estimations
+
+    , dagParMap :: DAG.ParentMap
+    -- ^ Need it to determine the parents of the individual DAG nodes (see the
+    -- complete-wrapping rule)
     }
 
 
@@ -172,6 +176,7 @@ mkAuto memoTerm gram input posMap hedMap =
         , anchorPos = ancPos
         , anchorPos' = ancPos'
         , headPos = hedMap
+        , dagParMap = DAG.parentMap dag
         }
 
 
@@ -247,12 +252,15 @@ mkLhsNonTerm dag auto = M.fromList
       case xs of
         [x] -> x
         _ -> error "Auto.mkLhsNonTerm: multiple LHS non-terminals per DID"
-    labNonTerm (O.NonTerm y) = Just $ NotFoot
-      { notFootLabel = y
-      , isSister = False }
     labNonTerm (O.Sister y) = Just $ NotFoot
       { notFootLabel = y
       , isSister = True }
+    labNonTerm (O.NonTerm y) = Just $ NotFoot
+      { notFootLabel = y
+      , isSister = False }
+    labNonTerm (O.DNode y) = Just $ NotFoot
+      { notFootLabel = y
+      , isSister = False }
     labNonTerm _ = Nothing
 
 

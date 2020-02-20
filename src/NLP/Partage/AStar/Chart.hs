@@ -312,19 +312,32 @@ expectEnd getAuto getChart did i = do
 
 
 -- | Return all passive items with:
--- * the given root non-terminal value (but not top-level auxiliary)
+-- * the given non-terminal value
 -- * the given span
---
--- WARNING 17.04.2019: the returned node can be a top-level sister node!
--- On top of that, this seems inconsistent with the behavior of `rootSpan` in
--- the Earley parser.
---
+-- TODO: It should not be called `rootSpan`, it returns also non-root items!
 rootSpan
     :: (Ord n, MS.MonadState s m)
-    => (s -> Chart n t)
+    => (s -> Auto n t)
+    -> (s -> Chart n t)
     -> n -> (Pos, Pos)
     -> P.ListT m (Passive n t, DuoWeight)
-rootSpan getChart x (i, j) = undefined
+rootSpan getAuto getChart x (i, j) = do
+  compState <- lift MS.get
+  let Chart{..} = getChart compState
+      auto = getAuto compState
+      dag = gramDAG auto
+  -- loop over all passive items
+  (p, e) <- each $ M.toList donePassive
+  -- check the necessary constraints
+  guard $ p ^. spanP ^. beg == i
+  guard $ p ^. spanP ^. end == j
+  -- NOTE: verifying `DAG.isRoot` would make this work incorrectly w.r.t. how
+  -- the function is used in the AStar module.
+  -- guard $ DAG.isRoot (p ^. dagID) dag
+  guard $ nonTerm (p ^. dagID) auto == x
+  -- return the item
+  return (p, duoWeight e)
+
 -- rootSpan getChart x (i, j) = do
 --   Chart{..} <- getChart <$> lift MS.get
 --   P.Select $ do

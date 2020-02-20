@@ -1084,14 +1084,10 @@ tryCompleteWrapping q = void $ P.runListT $ do
     guard $ isRoot qDID
     -- for each available gap
     gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+    -- TODO: add desc
+    qNonTerm <- some (nonTerm' qDID dag)
     -- take all passive items with a given span and a given
     -- root non-terminal (IDs irrelevant)
-    qNonTerm <- some (nonTerm' qDID dag)
-    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    -- TODO: this is not 100% consistent with the specification,
-    -- see the inference rules (CW: side conditions)!
-    --   -> have a look at the parent of the d-daughter node!
-    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     p <- rootSpan gapNT (gapBeg, gapEnd)
     -- make sure that `p` has ?ws == True
     guard $ getL ws p
