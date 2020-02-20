@@ -37,6 +37,7 @@ module NLP.Partage.AStar.Chart
   , provideBeg'
   , provideBegIni
   , provideBegIni'
+  , withGap
   , provideBegAux
   , auxModifyGap
 )
@@ -567,6 +568,26 @@ provideBegIni' getAuto getChart x i = do
   guard $ q ^. spanP ^. beg == i
   -- return the item
   return (q, duoWeight e)
+
+
+-- | Return all passive items with:
+-- * the given non-terminal value
+-- * the given span
+withGap
+    :: (Ord n, MS.MonadState s m)
+    => (s -> Auto n t)
+    -> (s -> Chart n t)
+    -> (Pos, Pos, n)
+    -> P.ListT m (Passive n t, DuoWeight)
+withGap getAuto getChart gap = do
+  compState <- lift MS.get
+  let Chart{..} = getChart compState
+  -- loop over each passive item
+  (p, e) <- each $ M.toList donePassive
+  -- check the necessary constraints
+  guard $ gap `S.member` (p ^. spanP ^. gaps)
+  -- return the item
+  return (p, duoWeight e)
 
 
 -- | Return all auxiliary passive items which:

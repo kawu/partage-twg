@@ -831,6 +831,13 @@ provideBegIni'
 provideBegIni' = Chart.provideBegIni' automat chart
 
 
+-- | TODO
+withGap
+    :: Ord n => (Pos, Pos, n)
+    -> P.ListT (EarleyPipe n t) (Passive n t, DuoWeight)
+withGap = Chart.withGap automat chart
+
+
 -- | See `Chart.provideBegAux`.
 provideBegAux
     :: (Ord n, Ord t) => DID -> Pos
@@ -2160,26 +2167,6 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
     -- make sure that `p` has ?ws == True
     guard $ getL ws p
 
-    ---------------------------------
-    -- FINISHED HERE
-    ---------------------------------
-
---     let pDID = getL dagID p
---         pSpan = getL spanP p
---     -- the underlying dag grammar
---     dag <- RWS.gets (gramDAG . automat)
--- 
---     -- the underlying leaf map
---     leafMap <- RWS.gets (leafDID  . automat)
---     -- now, we need to choose the DAG node to search for
---     nodeNT <- some (nonTerm' pDID dag)
---     theDID <- each . S.toList . maybe S.empty id $ M.lookup nodeNT leafMap
---     -- find active items which end where `p' begins and which
---     -- expect the DAG node provided by `p'
---     (q, qw) <- expectEnd theDID (getL beg pSpan)
---     -- follow the DAG node
---     (tranCost, j) <- follow (getL state q) theDID
-
     -- construct the resulting state
     let pBeg = getL beg pSpan
         pEnd = getL end pSpan
@@ -2239,13 +2226,6 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
     guard $ DAG.isRoot qDID dag
     -- for each available gap
     gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
---     -- TEMP BEG
---     hype <- RWS.get
---     liftIO $ do
---       putStrLn "########## CW1>>"
---       printPassive q hype
---       putStrLn "########## <<CW1"
---     -- TEMP END
     -- TODO: add desc
     qNonTerm <- some (nonTerm' qDID dag)
     -- take all passive items with a given span and a given
@@ -2259,7 +2239,8 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
        then error "tryCompleteWrapping: d-daughter node with several parents"
        else return ()
     parID <- each (S.toList parIdSet)
-    parNonTerm <- some (labNonTerm =<< DAG.label parID dag) -- parID dag)
+    -- TODO: implement line below in terms of `nonTerm'`?
+    parNonTerm <- some (labNonTerm =<< DAG.label parID dag)
     guard $ qNonTerm == parNonTerm
     -- check the operation w.r.t. the dependency info
     Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
@@ -2279,6 +2260,81 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
     lift $ pushPassive p' newDuo (CompleteWrapping q p depCost)
+#ifdef DebugOn
+    hype <- RWS.get
+    liftIO $ do
+        endTime <- Time.getCurrentTime
+        putStr "[C]  " >> printPassive q hype
+        putStr "  +  " >> printPassive p hype
+        putStr "  :  " >> printPassive p' hype
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
+
+
+-- | Alternative version of `tryCompleteWrapping`.
+tryCompleteWrapping'
+  :: (SOrd t, SOrd n)
+  => Passive n t
+  -> DuoWeight
+  -> EarleyPipe n t ()
+tryCompleteWrapping' p pw = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- liftIO $ Time.getCurrentTime
+#endif
+    let pDID = p ^. dagID
+        pSpan = p ^. spanP
+
+    -- the underlying dag grammar
+    dag <- RWS.gets (gramDAG . automat)
+    parMap <- RWS.gets (dagParMap . automat)
+
+    -- make sure that `p` has ?ws == True
+    guard $ getL ws p
+
+    -- take all passive items with the corresponding gap
+    pNonTerm <- some (nonTerm' pDID dag)
+    let gap = (pSpan ^. beg, pSpan ^. beg, pNonTerm)
+    (q, qw) <- withGap gap
+
+    -- local names
+    let qDID = q ^. dagID
+        qSpan = q ^. spanP
+
+    -- make sure `q` is top-level
+    guard $ DAG.isRoot qDID dag
+
+    -- determine q's non-terminal
+    qNonTerm <- some (nonTerm' qDID dag)
+
+    -- verify the label of the parent
+    parIdSet <- some $ M.lookup (p ^. dagID) parMap
+    if (S.size parIdSet > 1)
+       then error "tryCompleteWrapping': d-daughter node with several parents"
+       else return ()
+    parID <- each (S.toList parIdSet)
+    -- TODO: implement line below in terms of `nonTerm'`?
+    parNonTerm <- some (labNonTerm =<< DAG.label parID dag)
+    guard $ qNonTerm == parNonTerm
+
+    -- check the operation w.r.t. the dependency info
+    Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
+    -- calculate the new set of gaps
+    let newGaps = S.union (p ^. spanP ^. gaps)
+                . S.delete gap
+                $ qSpan ^. gaps
+    -- construct the resulting item
+    let p' = setL (spanP >>> beg) (qSpan ^. beg)
+           . setL (spanP >>> end) (qSpan ^. end)
+           . setL (spanP >>> gaps) newGaps
+           . setL ws False
+           $ p
+    -- calculate the resulting weights
+    let newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
+        newGap = duoGap qw
+        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
+    -- push the resulting state into the waiting queue
+    lift $ pushPassive p' newDuo (CompleteWrapping q p depCost)
+
 #ifdef DebugOn
     hype <- RWS.get
     liftIO $ do
@@ -2521,6 +2577,7 @@ step (ItemP p :-> e) = do
       , trySisterAdjoin
       , tryPredictWrapping
       , tryCompleteWrapping
+      , tryCompleteWrapping'
       -- , trySubstPS
       -- , tryAdjoinCont
       ]
