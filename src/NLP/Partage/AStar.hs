@@ -1349,207 +1349,6 @@ trySubst' q qw = void $ P.runListT $ do
 
 
 --------------------------------------------------
--- SUBST combined with PS (for the record)
---------------------------------------------------
-
-
--- -- | Try to use the passive item `p` to complement
--- -- (=> substitution) other rules.
--- trySubstPS
---     :: (SOrd t, SOrd n)
---     => Passive n t
---     -> DuoWeight
---     -> EarleyPipe n t ()
--- trySubstPS p pw = void $ P.runListT $ do
--- #ifdef DebugOn
---     begTime <- liftIO $ Time.getCurrentTime
--- #endif
---     let pDID = getL dagID p
---         pSpan = getL spanP p
---     -- make sure that `p' represents regular rules
---     guard . regular $ pSpan
---     -- some underlying maps
---     auto <- RWS.gets automat
---     let dag = gramDAG auto
---         leafMap = leafDID auto
--- --         anchorMap = anchorPos auto
--- --         headMap = headPos auto
---     -- make sure that `p` does not represent sister tree
---     guard $ not (isSister' pDID dag)
---     -- now, we need to choose the DAG node to search for depending on whether
---     -- the DAG node provided by `p' is a root or not
---     (theDID, depCost) <-
---       if DAG.isRoot pDID dag
---          -- real substitution
---          then do
---            -- take the `DID` of a leaf with the appropriate non-terminal
---            did <- each . S.toList . maybe S.empty id $
---              M.lookup (nonTerm pDID auto) leafMap
---            -- verify that the substitution is OK w.r.t. the dependency info
--- --            let cost = do
--- --                  -- determine the position of the head tree
--- --                  hedPos <- M.lookup did anchorMap
--- --                  -- determine the position of the dependent tree
--- --                  depPos <- M.lookup pDID anchorMap
--- --                  -- determine the accepted positions of the dependent tree
--- --                  posMap <- M.lookup depPos headMap
--- --                  -- return the corresponding weight
--- --                  return $ M.lookup hedPos posMap
--- --            guard $ cost /= Just Nothing
--- --            return (did, maybe 0 fromJust cost)
---            Just cost <- lift $ omega pDID did
---            return (did, cost)
---          -- pseudo-substitution
---          else do
---            return (pDID, 0)
---     -- find active items which end where `p' begins and which
---     -- expect the non-terminal provided by `p' (ID included)
---     (q, qw) <- expectEnd theDID (getL beg pSpan)
---     -- follow the transition symbol
---     (tranCost, j) <- follow (q ^. state) theDID
---     -- construct the resultant state
---     -- let q' = q {state = j, spanA = spanA p {end = end p}}
---     let q' = setL state j
---            . setL (spanA >>> end) (pSpan ^. end)
---            $ q
---     -- compute the estimated distance for the resulting state
---     -- estDist <- lift . estimateDistA $ q'
---     -- push the resulting state into the waiting queue
---     let newBeta = sumWeight [duoBeta pw, duoBeta qw, tranCost, depCost]
---         -- BELOW NEW 28.12.2018
---         -- newGap = duoGap qw
---         newGap =
---           if DAG.isRoot pDID dag
---             then duoGap qw -- real substitution
---             else duoGap pw + duoGap qw -- pseudo substitution
---         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
---     lift $ pushInduced q' newDuo (Subst p q $ tranCost + depCost)
--- #ifdef CheckMonotonic
---     lift . lift $ testMono "SUBST" (p, pw) (q, qw) (q', newDuo)
--- #endif
--- #ifdef DebugOn
---     -- print logging information
---     hype <- RWS.get
---     liftIO $ do
---         endTime <- Time.getCurrentTime
---         putStr "[U]  " >> printPassive p hype
---         putStr "  +  " >> printActive q
---         putStr "  :  " >> printActive q'
---         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
---         putStr " #W  " >> print newBeta
---         -- putStr " #E  " >> print estDist
--- #endif
--- 
--- 
--- -- | Reversed `trySubstPS` version.  Try to completent the item with
--- -- another fully parsed item.
--- trySubstPS'
---     :: (SOrd t, SOrd n)
---     => Active
---     -> DuoWeight
---     -> EarleyPipe n t ()
--- trySubstPS' q qw = void $ P.runListT $ do
--- #ifdef DebugOn
---     begTime <- liftIO $ Time.getCurrentTime
--- #endif
---     -- some underlying maps
---     auto <- RWS.gets automat
---     let dag = gramDAG auto
---         leafMap = leafDID auto
--- 
--- --         anchorMap = anchorPos auto
--- --         headMap = headPos auto
--- 
---     -- Learn what non-terminals `q` actually expects.
---     -- WARNING: in the automaton-based parser, this seems not
---     -- particularly efficient in some corner cases...
---     -- For instance, when `q` refers to the root node of an
---     -- automaton.  Can we bypass this issue?
---     -- (r@NonT{}, _) <- some $ expects' (q ^. state)
---     -- (qLab@NonT{}, tranCost, j) <- elems (q ^. state)
---     (qDID, tranCost, j) <- elems (q ^. state)
--- 
---     qNT <- some $ 
---       if DAG.isLeaf qDID dag
---          then do
---            O.NonTerm x <- DAG.label qDID dag
---            return (Left x)
---          else return (Right qDID)
--- --     -- Make sure `qDID` actually corresponds to a non-terminal
--- --     guard . isJust $ do
--- --       O.NonTerm _ <- DAG.label qDID dag
--- --       return ()
---     -- Find processed items which begin where `q` ends and which
---     -- provide the non-terminal expected by `q`.
---     (p, pw) <- provideBegIni qNT (q ^. spanA ^. end)
---     let pDID = p ^. dagID
--- 
---     -- make sure that if `qDID` is a leaf, only substitution can take place
---     guard $ DAG.isLeaf qDID dag <= DAG.isRoot pDID dag
--- 
---     -- make sure that `p` does not represent a sister tree
---     guard $ not (isSister' pDID dag)
--- 
--- --     let cost = do
--- --           -- only in case of actual substitution
--- --           guard $ DAG.isLeaf qDID dag
--- --           -- determine the position of the head tree
--- --           hedPos <- M.lookup qDID anchorMap
--- --           -- determine the position of the dependent tree
--- --           depPos <- M.lookup (p ^. dagID) anchorMap
--- --           -- determine the accepted positions of the dependent tree
--- --           posMap <- M.lookup depPos headMap
--- --           -- check if they agree
--- --           return $ M.lookup hedPos posMap
--- --     guard $ cost /= Just Nothing
--- --     let depCost = maybe 0 fromJust cost
--- 
---     Just depCost <- 
---       if DAG.isLeaf qDID dag
---          then lift $ omega (p ^. dagID) qDID
---          else return (Just 0)
--- 
--- --     liftIO $ do
--- --       putStr "is actual substitution: "
--- --       putStrLn $ show $ DAG.isLeaf qDID dag
--- --       putStr "depCost: "
--- --       putStrLn $ show depCost
--- 
---     let pSpan = p ^. spanP
---     -- construct the resultant state
---     let q' = setL state j
---            . setL (end . spanA) (pSpan ^. end)
---            $ q
---     -- compute the estimated distance for the resulting state
---     -- estDist <- lift . estimateDistA $ q'
---     -- push the resulting state into the waiting queue
---     let newBeta = sumWeight [duoBeta pw, duoBeta qw, tranCost, depCost]
---         -- BELOW NEW 28.12.2018
---         -- newGap = duoGap qw
---         newGap =
---           if DAG.isLeaf qDID dag
---             then duoGap qw -- real substitution
---             else duoGap pw + duoGap qw -- pseudo substitution
---         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
---     lift $ pushInduced q' newDuo (Subst p q $ tranCost + depCost)
--- #ifdef CheckMonotonic
---     lift . lift $ testMono "SUBST'" (p, pw) (q, qw) (q', newDuo)
--- #endif
--- #ifdef DebugOn
---     -- print logging information
---     hype <- RWS.get
---     liftIO $ do
---         endTime <- Time.getCurrentTime
---         putStr "[U'] " >> printActive q
---         putStr "  +  " >> printPassive p hype
---         putStr "  :  " >> printActive q'
---         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
---         putStr " #W  " >> print newBeta
---         -- putStr " #E  " >> print estDist
--- #endif
-
-
---------------------------------------------------
 -- FOOT ADJOIN
 --------------------------------------------------
 
@@ -2121,6 +1920,9 @@ tryPredictWrapping p pw = void $ P.runListT $ do
     -- push the resulting state into the waiting queue
     -- liftIO $ putStrLn "==>> PW !!" 
     lift $ pushInduced q' newDuo (PredictWrapping p q tranCost)
+#ifdef CheckMonotonic
+    lift . lift $ testMono "PREDICT-WRAPPING" (p, pw) (q, qw) (q', newDuo)
+#endif
 #ifdef DebugOn
     -- print logging information
     hype <- RWS.get
@@ -2192,6 +1994,9 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
     -- push the resulting state into the waiting queue
     -- liftIO $ putStrLn "==>> PW !!" 
     lift $ pushInduced q' newDuo (PredictWrapping p q tranCost)
+#ifdef CheckMonotonic
+    lift . lift $ testMono "PREDICT-WRAPPING'" (p, pw) (q, qw) (q', newDuo)
+#endif
 #ifdef DebugOn
     -- print logging information
     hype <- RWS.get
@@ -2269,6 +2074,17 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
     lift $ pushPassive p' newDuo (CompleteWrapping q p depCost)
+#ifdef CheckMonotonic
+    lift . lift $ testMono' "COMPLETE-WRAPPING" (p, pw) (q, qw) (p', newDuo)
+--     totalP <- lift . lift $ est2total pw <$> estimateDistP p
+--     totalQ <- lift . lift $ est2total qw <$> estimateDistP q
+--     totalQ' <- lift . lift $ est2total newDuo <$> estimateDistP p'
+--     let tails =  [totalP, totalQ]
+--     when (any (totalQ' + epsilon <) tails) $ do
+--       P.liftIO . putStrLn $
+--         "[COMPLETE-WRAPPING: MONOTONICITY TEST FAILED] TAILS: " ++ show tails ++
+--         ", HEAD: " ++ show totalQ'
+#endif
 #ifdef DebugOn
     hype <- RWS.get
     liftIO $ do
@@ -2346,6 +2162,9 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
     -- push the resulting state into the waiting queue
     lift $ pushPassive p' newDuo (CompleteWrapping q p depCost)
 
+#ifdef CheckMonotonic
+    lift . lift $ testMono' "COMPLETE-WRAPPING'" (p, pw) (q, qw) (p', newDuo)
+#endif
 #ifdef DebugOn
     hype <- RWS.get
     liftIO $ do
@@ -2865,4 +2684,25 @@ testMono opStr (p, pw) (q, qw) (q', newDuo) = do
         putStrLn $ show (newDuo, dist'Q')
         putStr " => amortized weight: "
         putStrLn $ show amortWeightQ'
+#endif
+
+
+#ifdef CheckMonotonic
+testMono'
+    :: (SOrd n, SOrd t)
+    => String
+    -> (Passive n t, DuoWeight)
+    -> (Passive n t, DuoWeight)
+    -> (Passive n t, DuoWeight)
+    -> Earley n t ()
+testMono' opStr (p, pw) (q, qw) (p', newDuo) = do
+  totalP <- est2total pw <$> estimateDistP p
+  totalQ <- est2total qw <$> estimateDistP q
+  totalQ' <- est2total newDuo <$> estimateDistP p'
+  let tails =  [totalP, totalQ]
+  when (any (totalQ' + epsilon <) tails) $ do
+    P.liftIO $ do
+      putStrLn $ "[" ++ opStr ++ ": MONOTONICITY TEST FAILED]" ++
+        " TAILS: " ++ show tails ++
+        ", HEAD: " ++ show totalQ'
 #endif
