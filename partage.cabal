@@ -104,8 +104,9 @@ library
 
     -- Account for the weight of the arc leading to the dummy root.  This makes
     -- the implementation slighly inconsistent with the formal description of
-    -- the inference rules.
-    cpp-options: -DHandleDummyArcWeight
+    -- the inference rules.  Note also that, currently, with this option turned
+    -- on, monotonicity tests fail with the CheckMonotonic flag.
+    -- cpp-options: -DHandleDummyArcWeight
 
 
 source-repository head
