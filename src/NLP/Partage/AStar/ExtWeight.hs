@@ -10,6 +10,9 @@ module NLP.Partage.AStar.ExtWeight
   , addWeight
   , sumWeight
   , minWeight
+  , disjointUnion
+  , safeInsert
+  , safeDelete
 
   -- * Extended Weight
   , ExtWeight (..)
@@ -28,6 +31,7 @@ where
 
 import           Data.Function          (on)
 import qualified Data.Set               as S
+import qualified Data.Map.Strict        as M
 
 import           NLP.Partage.AStar.Base
 import           NLP.Partage.AStar.Item
@@ -155,6 +159,36 @@ minWeight = min
 {-# INLINE minWeight #-}
 
 
+-- | Minimum of two weight maps.
+-- TODO: that's one of possible definitions!
+minWeightMap :: (Ord a) => M.Map a Weight -> M.Map a Weight -> M.Map a Weight
+minWeightMap = M.unionWith min
+{-# INLINE minWeightMap #-}
+
+
+-- | Disjoint union of two maps.
+disjointUnion :: (Ord a) => M.Map a Weight -> M.Map a Weight -> M.Map a Weight
+disjointUnion m1 m2
+  | M.null (M.intersection m1 m2) = M.union m1 m2
+  | otherwise = error "AStar.ExtWeight.disjointUnion: maps not disjoint"
+
+
+-- | Insert *new* element in the map.
+safeInsert :: (Ord k) => k -> Weight -> M.Map k Weight -> M.Map k Weight
+safeInsert k x m
+  | M.member k m =
+      error "AStar.ExtWeight.safeInsert: key already present"
+  | otherwise = M.insert k x m
+
+
+-- | Delete *existing* element from the map.
+safeDelete :: (Ord k) => k -> M.Map k Weight -> M.Map k Weight
+safeDelete k m
+  | M.member k m = M.delete k m
+  | otherwise =
+      error "AStar.ExtWeight.safeDelete: key not present"
+
+
 --------------------------------------------------
 -- Extended Weight
 --------------------------------------------------
@@ -171,8 +205,8 @@ data ExtWeight n t = ExtWeight
     -- individual "elementary rules".
     , estWeight :: Weight
     -- ^ Estimated weight to the "end"
-    , gapWeight :: Weight
-    -- ^ Estimated eight of the gap
+    , gapWeight:: M.Map Pos Weight
+    -- ^ Estimated weight of the gap
     , prioTrav  :: S.Set (Trav n t)
     -- ^ Traversal leading to the underlying chart item
     } deriving (Show)
@@ -181,9 +215,13 @@ data ExtWeight n t = ExtWeight
 -- | Total weight of an item.
 totalWeight :: ExtWeight n t -> Weight
 #ifdef NewHeuristic
-totalWeight ExtWeight{..} = priWeight `addWeight` estWeight `addWeight` gapWeight
+totalWeight ExtWeight{..} =
+  priWeight `addWeight`
+  estWeight `addWeight`
+  sum (M.elems gapWeight)
 #else
-totalWeight ExtWeight{..} = priWeight `addWeight` estWeight
+-- totalWeight ExtWeight{..} = priWeight `addWeight` estWeight
+totalWeight ExtWeight{..} = error "Old heuristic not supported anymore"
 #endif
 
 
@@ -240,7 +278,7 @@ joinExtWeight x y = if estWeight x /= estWeight y
   else ExtWeight
        { priWeight = minWeight (priWeight x) (priWeight y)
        , estWeight = estWeight x
-       , gapWeight = minWeight (gapWeight x) (gapWeight y)
+       , gapWeight = minWeightMap (gapWeight x) (gapWeight y)
        , prioTrav  = S.union (prioTrav x) (prioTrav y) }
 
 
@@ -279,7 +317,9 @@ joinExtWeight' = joinExtWeight
 -- weight of the optimal derivation) with gap weight.
 data DuoWeight = DuoWeight
   { duoBeta :: Weight
-  , duoGap  :: Weight }
+  -- , duoGap  :: Weight
+  , duoGap :: M.Map Pos Weight
+  }
   deriving (Show, Eq, Ord)
 
 
@@ -288,4 +328,4 @@ duoWeight :: ExtWeight n t -> DuoWeight
 duoWeight ExtWeight{..} =
   DuoWeight
   { duoBeta = priWeight
-  , duoGap  = gapWeight }
+  , duoGap = gapWeight }

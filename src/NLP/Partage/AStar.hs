@@ -878,7 +878,7 @@ tryScan p duo = void $ P.runListT $ do
         $ p
   -- push the resulting state into the waiting queue
   let newBeta = addWeight (duoBeta duo) termCost
-      newGap = duoGap duo -- + depCost
+      newGap = duoGap duo
       newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
   lift $ pushInduced q newDuo
            (Scan p tok termCost)
@@ -1111,7 +1111,7 @@ tryPseudoSubst p pw = void $ P.runListT $ do
 
     -- push the resulting state into the waiting queue
     let newBeta = sumWeight [duoBeta pw, duoBeta qw, tranCost]
-        newGap = duoGap pw + duoGap qw
+        newGap = disjointUnion (duoGap pw) (duoGap qw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     lift $ pushInduced q' newDuo (Subst p q tranCost)
 #ifdef CheckMonotonic
@@ -1177,7 +1177,7 @@ tryPseudoSubst' q qw = void $ P.runListT $ do
     -- estDist <- lift . estimateDistA $ q'
     -- push the resulting state into the waiting queue
     let newBeta = sumWeight [duoBeta pw, duoBeta qw, tranCost]
-        newGap = duoGap pw + duoGap qw
+        newGap = disjointUnion (duoGap pw) (duoGap qw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     lift $ pushInduced q' newDuo (Subst p q tranCost)
 #ifdef CheckMonotonic
@@ -1250,7 +1250,7 @@ trySubst p pw = void $ P.runListT $ do
            $ q
     -- push the resulting state into the waiting queue
     let newBeta = sumWeight [duoBeta pw, duoBeta qw, tranCost, depCost]
-        newGap = duoGap qw
+        newGap = disjointUnion (duoGap qw) (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     lift $ pushInduced q' newDuo (Subst p q $ tranCost + depCost)
 #ifdef CheckMonotonic
@@ -1328,7 +1328,7 @@ trySubst' q qw = void $ P.runListT $ do
 
     -- push the resulting state into the waiting queue
     let newBeta = sumWeight [duoBeta pw, duoBeta qw, tranCost, depCost]
-        newGap = duoGap qw
+        newGap = disjointUnion (duoGap qw) (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     lift $ pushInduced q' newDuo (Subst p q $ tranCost + depCost)
 #ifdef CheckMonotonic
@@ -1987,7 +1987,7 @@ trySisterAdjoin p pw = void $ P.runListT $ do
            . modL' (gaps . spanA) (S.union $ getL gaps pSpan)
            $ q
         newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
-        newGap = duoGap qw
+        newGap = disjointUnion (duoGap pw) (duoGap qw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
     lift $ pushInduced q' newDuo (SisterAdjoin p q depCost)
@@ -2049,7 +2049,7 @@ trySisterAdjoin' q qw = void $ P.runListT $ do
   let pSpan = getL spanP p
       q' = setL (end . spanA) (getL end pSpan) $ q
       newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
-      newGap = duoGap qw
+      newGap = disjointUnion (duoGap pw) (duoGap qw)
       newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
   -- push the resulting state into the waiting queue
   lift $ pushInduced q' newDuo (SisterAdjoin p q depCost)
@@ -2113,8 +2113,10 @@ tryPredictWrapping p pw = void $ P.runListT $ do
     amortWeight <- lift . lift $ amortizedWeight p
     -- push the resulting state into the waiting queue
     let newBeta = addWeight (duoBeta qw) tranCost
-        -- TODO: `duaGap qw` should be equal to `0`?
-        newGap = sumWeight [duoGap qw, duoBeta pw, duoGap pw, amortWeight]
+        -- newGap = sum [duoGap qw, duoBeta pw, duoGap pw, amortWeight]
+        newGap = safeInsert pBeg
+          (duoBeta pw + sum (M.elems (duoGap pw)) + amortWeight)
+          (duoGap qw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
     -- liftIO $ putStrLn "==>> PW !!" 
@@ -2182,7 +2184,10 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
     -- push the resulting state into the waiting queue
     let newBeta = addWeight (duoBeta qw) tranCost
         -- TODO: `duaGap qw` should be equal to `0`?
-        newGap = sumWeight [duoGap qw, duoBeta pw, duoGap pw, amortWeight]
+        -- newGap = sum [duoGap qw, duoBeta pw, duoGap pw, amortWeight]
+        newGap = safeInsert pBeg
+          (duoBeta pw + sum (M.elems (duoGap pw)) + amortWeight)
+          (duoGap qw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
     -- liftIO $ putStrLn "==>> PW !!" 
@@ -2257,7 +2262,10 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
            $ p
     -- calculate the resulting weights
     let newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
-        newGap = duoGap qw
+        -- newGap = duoGap qw
+        newGap = disjointUnion
+          (safeDelete gapBeg (duoGap qw))
+          (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
     lift $ pushPassive p' newDuo (CompleteWrapping q p depCost)
@@ -2331,7 +2339,9 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
            $ p
     -- calculate the resulting weights
     let newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
-        newGap = duoGap qw
+        newGap = disjointUnion
+          (safeDelete (pSpan ^. beg) (duoGap qw))
+          (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
     lift $ pushPassive p' newDuo (CompleteWrapping q p depCost)
@@ -2585,7 +2595,7 @@ earleyAutoGen =
               { _beg   = i
               , _end   = i
               , _gaps  = S.empty }
-      lift $ pushActive q (DuoWeight zeroWeight zeroWeight) Nothing
+      lift $ pushActive q (DuoWeight zeroWeight M.empty) Nothing
     -- the computation is performed as long as the waiting queue
     -- is non-empty.
     loop = lift popItem >>= \mp -> case mp of
