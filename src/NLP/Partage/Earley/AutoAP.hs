@@ -59,7 +59,7 @@ import qualified Control.Monad.RWS.Strict   as RWS
 import           Control.Category ((>>>), (.))
 
 -- import           Data.Function              (on)
--- import           Data.Either                (isLeft)
+import           Data.Either    (isRight)
 import           Data.Maybe     ( isNothing, mapMaybe
                                 , maybeToList )
 import qualified Data.Map.Strict            as M
@@ -767,8 +767,9 @@ trySubst p = void $ P.runListT $ do
     guard $ case pDID of
         Left root -> not (isSister root)
         Right _ -> True
-    -- UPDATE 19.02.202: make sure that `p` has ?ws == False
-    guard . not $ getL ws p
+    -- UPDATE 19.02.2020: make sure that `p` has ?ws == False
+    -- UPDATE 25.03.2020: handle the new ?ws type
+    guard . (== Left False) $ getL ws p
     -- the underlying leaf map
     leafMap <- RWS.gets (leafDID  . automat)
     -- now, we need to choose the DAG node to search for depending on whether
@@ -801,6 +802,85 @@ trySubst p = void $ P.runListT $ do
         putStr "[U]  " >> printPassive p hype
         putStr "  +  " >> printActive q
         putStr "  :  " >> printActive q'
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
+
+
+--------------------------------------------------
+-- COMBINE DNODE (CS_D) [NEW 25.03.2020]
+--------------------------------------------------
+
+
+-- | Implements the CS_D rule.
+tryCD :: (SOrd t, SOrd n) => Passive n t -> Earley n t ()
+tryCD p = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- lift . lift $ Time.getCurrentTime
+#endif
+    let pDID = getL dagID p
+        pSpan = getL spanP p
+    -- get the DAG node to search for
+    Right theDID <- return pDID
+    -- make sure that `p` has ?ws which is a DAG node
+    Right resumeDID <- return $ getL ws p
+
+    -- the underlying leaf map
+    leafMap <- RWS.gets (leafDID  . automat)
+    -- find active items which end where `p' begins and which
+    -- expect the DAG node provided by `p'
+    q <- expectEnd theDID (getL beg pSpan)
+    -- determine the span of q
+    let qSpan = q ^. spanA
+
+    -- make sure we are finished with parsing the dotted rule
+    -- after passing over the DNode
+    --
+    -- TODO: some code duplication with `follow` and `heads`
+    -- TODO: not sure how this interacts with grammar compression
+    --
+    headDIDs <- do
+      -- get the underlying automaton
+      auto <- RWS.gets $ gramAuto . automat
+      dag <- RWS.gets $ gramDAG . automat
+      -- rule head extraction
+      let mayHead (x, _) = case x of
+              A.Body _  -> Nothing
+              A.Head y -> Just y
+      -- create the resulting list
+      return $ do
+      -- follow the DAG node
+        j <- maybeToList $ A.follow auto (getL state q) (A.Body theDID)
+        did <- mapMaybe mayHead $ A.edges auto (j :: ID)
+        -- the LHS of the dotted rule must be a DAG root
+        guard $ DAG.isRoot did dag
+        return did
+    guard . not . null $ (headDIDs :: [DID])
+
+    -- calculate the new set of gaps
+    let newGaps = S.union (pSpan ^. gaps) (qSpan ^. gaps)
+    -- construct the resulting item
+    let p' = Passive
+          { _dagID = Right resumeDID
+          -- We can infer from the inference rules that `resumeDID` is
+          -- not a root
+          , _spanP = Span
+            { _beg = qSpan ^. beg
+            , _end = pSpan ^. end
+            , _gaps = newGaps
+            }
+          , _ws = Left False
+          -- TODO: ws? NOT SPECIFIED IN THE DEDUCTION RULES!
+          }
+    -- push the resulting state into the waiting queue
+    lift $ pushPassive p' $ error "IMPLEMENT!"  -- Subst p q
+#ifdef DebugOn
+    -- print logging information
+    hype <- RWS.get
+    lift . lift $ do
+        endTime <- Time.getCurrentTime
+        putStr "[CD] " >> printPassive p hype
+        putStr "  +  " >> printActive q
+        putStr "  :  " >> printPassive p' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -986,7 +1066,8 @@ trySisterAdjoin p = void $ P.runListT $ do
     Left root <- return pDID
     guard $ isSister root
     -- UPDATE 19.02.202: make sure that `p` has ?ws == False
-    guard . not $ getL ws p
+    -- UPDATE 25.03.2020: handle the new ?ws type
+    guard . (== Left False) $ getL ws p
     -- find active items which end where `p' begins and which have the
     -- corresponding LHS non-terminal
     q <- rootEnd (notFootLabel root) (getL beg pSpan)
@@ -1027,7 +1108,8 @@ tryPredictWrapping p = void $ P.runListT $ do
     -- the underlying dag grammar
     dag <- RWS.gets (gramDAG . automat)
     -- make sure that `p` has ?ws == True
-    guard $ getL ws p
+    -- UPDATE 25.03.2020: handle the new ?ws type
+    guard . (== Left True) $ getL ws p
     -- the underlying leaf map
     leafMap <- RWS.gets (leafDID  . automat)
     -- now, we need to choose the DAG node to search for
@@ -1067,8 +1149,8 @@ tryPredictWrapping p = void $ P.runListT $ do
 --------------------------------------------------
 
 
--- | Wrap a fully-parsed tree represented by `q` over a partially parsed
--- tree represented by `q`.
+-- | Wrap a fully-parsed tree represented by `q` over a partially
+-- parsed tree represented by `q`.
 tryCompleteWrapping :: (SOrd t, SOrd n) => Passive n t -> Earley n t ()
 tryCompleteWrapping q = void $ P.runListT $ do
 #ifdef DebugOn
@@ -1090,7 +1172,8 @@ tryCompleteWrapping q = void $ P.runListT $ do
     -- root non-terminal (IDs irrelevant)
     p <- rootSpan gapNT (gapBeg, gapEnd)
     -- make sure that `p` has ?ws == True
-    guard $ getL ws p
+    -- UPDATE 25.03.2020: handle the new ?ws type
+    guard . (== Left True) $ getL ws p
     -- verify the label of the parent
     parIdSet <- some $
       case p ^. dagID of
@@ -1111,7 +1194,7 @@ tryCompleteWrapping q = void $ P.runListT $ do
     let p' = setL (spanP >>> beg) (qSpan ^. beg)
            . setL (spanP >>> end) (qSpan ^. end)
            . setL (spanP >>> gaps) newGaps
-           . setL ws False
+           . setL ws (Left False)
            $ p
     lift $ pushPassive p' $ CompleteWrapping q p
 #ifdef DebugOn
@@ -1124,6 +1207,71 @@ tryCompleteWrapping q = void $ P.runListT $ do
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
+
+--------------------------------------------------
+-- COMPLETE WRAPPING PRIME (CW') [NEW 25.03.2020]
+--------------------------------------------------
+
+
+-- | Implementation of CW'.
+tryCompleteWrappingPrim 
+  :: (SOrd t, SOrd n)
+  => Passive n t -> Earley n t ()
+tryCompleteWrappingPrim q = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- lift . lift $ Time.getCurrentTime
+#endif
+    -- let qLab = q ^. label
+    let qDID = q ^. dagID
+        qSpan = q ^. spanP
+    -- the underlying dag grammar
+    dag <- RWS.gets (gramDAG . automat)
+    parMap <- RWS.gets (dagParMap . automat)
+    -- make sure `qDID` is *not* a root
+    Right qTrueDID <- return qDID
+    -- for each available gap
+    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+    -- determine the non-terminal of `qDID`
+    qNonTerm <- some (nonTerm' qDID dag)
+    -- take all passive items with a given span and a given
+    -- root non-terminal (IDs irrelevant)
+    p <- rootSpan gapNT (gapBeg, gapEnd)
+    -- make sure that `p` has ?ws == True
+    guard . (== Left True) $ getL ws p
+    -- verify the label of the parent
+    parIdSet <- some $
+      case p ^. dagID of
+        Left _ -> error "tryCompleteWrapping: d-daughter root"
+        Right did -> M.lookup did parMap
+    if (S.size parIdSet > 1)
+       then error
+          "tryCompleteWrapping: d-daughter node with several parents"
+       else return ()
+    parID <- each (S.toList parIdSet)
+    parNonTerm <- some (labNonTerm =<< DAG.label parID dag)
+    guard $ qNonTerm == parNonTerm
+    -- make sure that the parent of the DNode is a root
+    guard $ DAG.isRoot parID dag
+    -- calculate the new set of gaps
+    let newGaps = S.union (p ^. spanP ^. gaps)
+                . S.delete gap
+                $ qSpan ^. gaps
+    -- construct the resulting item
+    let p' = setL (spanP >>> beg) (qSpan ^. beg)
+           . setL (spanP >>> end) (qSpan ^. end)
+           . setL (spanP >>> gaps) newGaps
+           . setL ws (Right qTrueDID)
+           $ p
+    lift $ pushPassive p' $ CompleteWrapping q p
+#ifdef DebugOn
+    hype <- RWS.get
+    lift . lift $ do
+        endTime <- Time.getCurrentTime
+        putStr "[C]  " >> printPassive q hype
+        putStr "  +  " >> printPassive p hype
+        putStr "  :  " >> printPassive p' hype
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
 
 --------------------------------------------------
 -- DEACTIVATE
@@ -1142,13 +1290,13 @@ tryDeactivate p = void $ P.runListT $ do
           then Passive
                { _dagID = Right did
                , _spanP = getL spanA p
-               , _ws = DAG.isDNode did dag }
+               , _ws = Left (DAG.isDNode did dag) }
           else check $ do
             x <- mkRoot <$> DAG.label did dag
             return $ Passive
               { _dagID = Left x
               , _spanP = getL spanA p
-              , _ws = DAG.isDNode did dag }
+              , _ws = Left (DAG.isDNode did dag) }
   lift $ pushPassive q (Deactivate p)
 #ifdef DebugOn
   -- print logging information
@@ -1183,12 +1331,14 @@ step
 step (ItemP p :-> e) = do
     mapM_ ($ p)
       [ trySubst
+      , tryCD
 --       , tryAdjoinInit
 --       , tryAdjoinCont
 --       , tryAdjoinTerm
       , trySisterAdjoin
       , tryPredictWrapping
       , tryCompleteWrapping
+      , tryCompleteWrappingPrim
       ]
     savePassive p $ prioTrav e
 step (ItemA p :-> e) = do
