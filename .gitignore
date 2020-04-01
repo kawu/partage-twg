@@ -11,3 +11,4 @@ output
 .stack-work
 TAGS
 data
+stack.yaml.lock
