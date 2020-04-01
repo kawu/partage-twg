@@ -133,6 +133,7 @@ anchor lx =
     onNode (O.Term (Term x)) = O.Term x
     onNode (O.NonTerm x) = O.NonTerm x
     onNode (O.Sister x) = O.Sister x
+    onNode (O.DNode x) = O.DNode x
 --     onNode (O.Foot x) = O.Foot x
 
 
@@ -168,15 +169,16 @@ forestP = treeP `Atto.sepBy` Atto.skipMany Atto.space
 -- | Non-leaf tree.
 nodeP :: Atto.Parser Tree
 nodeP = between '(' ')' $ do
-  (nonTerm, starred) <- nonTermP
+  (nonTerm, typ) <- nonTermP
   Atto.skipWhile C.isSpace
   subTrees <- forestP
   let nodeLabel =
-        if starred && null subTrees
-        then error "Foot not supported!" -- O.Foot nonTerm
-        else if starred
-             then O.Sister nonTerm
-             else O.NonTerm nonTerm
+        case typ of
+          Sister | null subTrees ->
+            error "Foot not supported!" -- O.Foot nonTerm
+          Sister  -> O.Sister nonTerm
+          DNode   -> O.DNode nonTerm
+          Regular -> O.NonTerm nonTerm
   return $ R.Node nodeLabel subTrees
 
 
@@ -211,13 +213,24 @@ anchorP :: Atto.Parser Term
 anchorP = Anchor <$ Atto.string "<>"
 
 
+-- | Type of a non-terminal node
+data NonTermType
+  = Regular
+  | Sister
+  | DNode
+  deriving (Show, Eq, Ord)
+
+
 -- | Parses a non-terminal + information if it's marked with a star
 -- (sister/foot).
-nonTermP :: Atto.Parser (NonTerm, Bool)
+nonTermP :: Atto.Parser (NonTerm, NonTermType)
 nonTermP = do
-  nonTerm <- Atto.takeTill $ \c -> C.isSpace c || c == '*' || c == ')'
-  starred <- (True <$ Atto.char '*') <|> pure False
-  return (nonTerm, starred)
+  nonTerm <- Atto.takeTill $ \c ->
+    C.isSpace c || c == '*' || c == ')' || c == '#'
+  typ <- (Sister <$ Atto.char '*')
+     <|> (DNode <$ Atto.string "#WRAP#")
+     <|> (pure Regular)
+  return (nonTerm, typ)
 
 
 -------------------------------------------------------------
@@ -349,6 +362,7 @@ buildLabel = \case
   O.Term (Just x) -> B.fromText x
   O.Term Nothing -> "-NONE-" -- B.fromText 
   O.Sister x -> B.fromText x `mappend` "*"
+  O.DNode x -> B.fromText x `mappend` "#WRAP#"
 --   O.Foot x -> B.fromText x `mappend` "*"
 
 

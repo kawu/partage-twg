@@ -216,13 +216,20 @@ applyDeriv mod hed
   | isSister mod = 
       error "Deriv.applyDeriv: isSister should not be possible!"
       -- applySister pos mod hed
-  | otherwise = applyAdj mod hed
+  -- | otherwise = applyAdj mod hed
+  | otherwise = applyWrapping hed mod
+--   | otherwise =
+--       error "Deriv.applyDeriv: impossible happened!"
   where
     isLeaf = null . R.subForest
     isSister t =
       case R.rootLabel t of
         O.Sister _ -> True
         _ -> False
+--     isDNode t =
+--       case R.rootLabel t of
+--         O.DNode _ -> True
+--         _ -> False
 
 
 -- | Apply substitution
@@ -252,14 +259,29 @@ applySubst mod _hed = mod
 --     showTree = R.drawTree . fmap show
 
 
--- | Apply adjunction
-applyAdj
+-- -- | Apply adjunction
+-- applyAdj
+--   :: (Show n, Show t)
+--   => O.Tree n (Maybe t)
+--   -> O.Tree n (Maybe t)
+--   -> O.Tree n (Maybe t)
+-- applyAdj mod hed =
+--   O.replaceFoot hed mod
+
+
+-- | Apply wrapping
+applyWrapping
   :: (Show n, Show t)
   => O.Tree n (Maybe t)
+    -- ^ Wrapping tree
   -> O.Tree n (Maybe t)
+    -- ^ Tree wrapped over
   -> O.Tree n (Maybe t)
-applyAdj mod hed =
-  O.replaceFoot hed mod
+applyWrapping wrp mod =
+  O.replaceSlot' wrp (rmRoot mod)
+  where
+    rmRoot (R.Node x [t]) = t
+    rmRoot _ = error "cannot remove the root without getting a forest!"
 
 
 -- -- | Split the forest into two separate parts, on two sides of the given
@@ -371,15 +393,22 @@ mkRoot hype p = only $
     labNT = Item.nonTerm dagID auto
 
 
-mkFoot :: n -> DerivNode UnNorm n t
-mkFoot x = only . O.Foot $ x
+-- mkFoot :: n -> DerivNode UnNorm n t
+-- mkFoot x = only . O.Foot $ x
+
+mkDNode :: n -> DerivNode UnNorm n t
+mkDNode x = only . O.DNode $ x
 
 mkTerm :: Maybe t -> DerivNode UnNorm n t
 mkTerm = only . O.Term
 
+-- -- | Build non-modified nodes of different types.
+-- footNode :: n -> Deriv UnNorm n t
+-- footNode x = R.Node (mkFoot x) []
+
 -- | Build non-modified nodes of different types.
-footNode :: n -> Deriv UnNorm n t
-footNode x = R.Node (mkFoot x) []
+dDaughterNode :: n -> Deriv UnNorm n t
+dDaughterNode x = R.Node (mkDNode x) []
 
 termNode :: t -> Deriv UnNorm n t
 termNode x = R.Node (mkTerm $ Just x) []
@@ -391,7 +420,8 @@ emptyNode = R.Node (mkTerm Nothing) []
 derivRoot :: Deriv UnNorm n t -> n
 derivRoot R.Node{..} = case node rootLabel of
   O.NonTerm x -> x
-  O.Foot _ -> error "passiveDerivs.getRoot: got foot"
+  -- O.Foot _ -> error "passiveDerivs.getRoot: got foot"
+  O.DNode _ -> error "passiveDerivs.getRoot: got d-daughter node"
   O.Sister _ -> error "passiveDerivs.getRoot: got sister"
   O.Term _ -> error "passiveDerivs.getRoot: got terminal"
 
@@ -463,6 +493,14 @@ unAdjoinTree cmb = do
         , R.subForest = subForestIni }
   return (ini, aux)
 
+-- | Add the modifier derivation (second argument) to the list of modifications
+-- of the wrapping derivation (first argument).
+wrapTree :: Deriv c n t -> Deriv c n t -> Deriv c n t
+wrapTree wrp mod = R.Node
+  { R.rootLabel = let root = R.rootLabel wrp in DerivNode
+    { node = node root
+    , modif = mod : modif root }
+  , R.subForest = R.subForest wrp }
 
 -------------------------------
 -- Extracting Derivation Trees
@@ -498,10 +536,14 @@ fromPassiveTrav
   -> A.Hype n t
   -> [Deriv UnNorm n (Tok t)]
 fromPassiveTrav p trav hype = case trav of
-  A.Adjoin qa qm _ ->
-    [ adjoinTree ini aux
-    | aux <- passiveDerivs qa
-    , ini <- passiveDerivs qm ]
+--   A.Adjoin qa qm _ ->
+--     [ adjoinTree ini aux
+--     | aux <- passiveDerivs qa
+--     , ini <- passiveDerivs qm ]
+  A.CompleteWrapping qw qm _ ->
+    [ wrapTree wrp mod
+    | wrp <- passiveDerivs qw
+    , mod <- passiveDerivs qm ]
   A.Deactivate q _ ->
     [ mkTree hype p ts
     | ts <- activeDerivs q ]
@@ -515,7 +557,7 @@ fromPassiveTrav p trav hype = case trav of
 -- | Extract derivations represented by the given active item.
 fromActive
   :: (Ord n, Ord t)
-  => A.Active
+  => A.Active n
   -> A.Hype n t
   -> [[Deriv UnNorm n (Tok t)]]
 fromActive active hype = 
@@ -532,7 +574,7 @@ fromActive active hype =
 -- and the corresponding input traversal.
 fromActiveTrav
   :: (Ord n, Ord t)
-  => A.Active
+  => A.Active n
   -> A.Trav n t
   -> A.Hype n t
   -> [[Deriv UnNorm n (Tok t)]]
@@ -543,9 +585,9 @@ fromActiveTrav _p trav hype = case trav of
   A.Empty q _ ->
     [ emptyNode : ts
     | ts <- activeDerivs q ]
-  A.Foot q x _ ->
-    [ footNode x : ts
-    | ts <- activeDerivs q ]
+--   A.Foot q x _ ->
+--     [ footNode x : ts
+--     | ts <- activeDerivs q ]
   A.Subst qp qa _ ->
     [ substNode hype qp t : ts
     | ts <- activeDerivs qa
@@ -584,15 +626,15 @@ passiveTrav passive hype = case A.passiveTrav passive hype of
 
 
 -- | Extract the passive traversal set.
-activeTrav :: (Ord n, Ord t) => A.Active -> A.Hype n t -> A.ExtWeight n t
+activeTrav :: (Ord n, Ord t) => A.Active n -> A.Hype n t -> A.ExtWeight n t
 activeTrav active hype = case A.activeTrav active hype of
   Nothing  -> case Q.lookup (A.ItemA active) (A.waiting hype) of
     Just _ -> error $
       "fromActive: active item in the waiting queue"
-      ++ "\n" ++ show active
+      -- ++ "\n" ++ show active
     Nothing -> error $
       "fromActive: unknown active item (not even in the queue)"
-      ++ "\n" ++ show active
+      -- ++ "\n" ++ show active
   Just ext -> ext
 
 
@@ -602,7 +644,7 @@ passiveWeight pass = A.priWeight . passiveTrav pass
 
 
 -- | Inside weight of a given passive item.
-activeWeight :: (Ord n, Ord t) => A.Active -> A.Hype n t -> Weight
+activeWeight :: (Ord n, Ord t) => A.Active n -> A.Hype n t -> Weight
 activeWeight act = A.priWeight . activeTrav act
 
 
@@ -617,9 +659,11 @@ travWeight trav h =
     A.Scan q _t _ -> activeWeight q h
     A.Empty q _ -> activeWeight q h
     A.Subst qp qa _ -> passiveWeight qp h + activeWeight qa h
-    A.Foot q _x _ -> activeWeight q h
+    -- A.Foot q _x _ -> activeWeight q h
+    A.PredictWrapping q _x _ -> activeWeight q h
     A.SisterAdjoin qp qa _ -> passiveWeight qp h + activeWeight qa h
-    A.Adjoin qa qm _ -> passiveWeight qa h + passiveWeight qm h
+    -- A.Adjoin qa qm _ -> passiveWeight qa h + passiveWeight qm h
+    A.CompleteWrapping qw qm _ -> passiveWeight qw h + passiveWeight qm h
     A.Deactivate q _ -> activeWeight q h
     _ -> error "travWeight: cul-de-sac"
 
@@ -772,10 +816,14 @@ fromPassiveTravGenW
   -> [(Deriv UnNorm n (Tok t), Weight)]
 fromPassiveTravGenW minBy p trav hype =
   second (+ arcWeight trav) <$> case trav of
-    A.Adjoin qa qm _ -> do
-      (aux, w) <- passiveDerivs qa
-      (ini, w') <- passiveDerivs qm
-      return (adjoinTree ini aux, w + w')
+--     A.Adjoin qa qm _ -> do
+--       (aux, w) <- passiveDerivs qa
+--       (ini, w') <- passiveDerivs qm
+--       return (adjoinTree ini aux, w + w')
+    A.CompleteWrapping qw qm _ -> do
+      (wrp, w) <- passiveDerivs qw
+      (mod, w') <- passiveDerivs qm
+      return (wrapTree wrp mod, w + w')
     A.Deactivate q _ -> do
       (ts, w) <- activeDerivs q
       return (mkTree hype p ts, w)
@@ -789,7 +837,7 @@ fromPassiveTravGenW minBy p trav hype =
 -- -- | Extract derivations represented by the given active item.
 -- fromActiveW
 --   :: (Ord n, Ord t)
---   => A.Active
+--   => A.Active n
 --   -> A.Hype n t
 --   -> [([Deriv UnNorm n (Tok t)], Weight)]
 -- fromActiveW active hype = do
@@ -807,7 +855,7 @@ fromPassiveTravGenW minBy p trav hype =
 fromActiveGenW
   :: (Ord n, Ord t)
   => (forall a. (a -> Weight) -> [a] -> [a])
-  -> A.Active
+  -> A.Active n
   -> A.Hype n t
   -> [([Deriv UnNorm n (Tok t)], Weight)]
 fromActiveGenW minBy active hype = do
@@ -825,7 +873,7 @@ fromActiveGenW minBy active hype = do
 -- -- and the corresponding input traversal.
 -- fromActiveTravW
 --   :: (Ord n, Ord t)
---   => A.Active
+--   => A.Active n
 --   -> A.Trav n t
 --   -> A.Hype n t
 --   -> [([Deriv UnNorm n (Tok t)], Weight)]
@@ -860,7 +908,7 @@ fromActiveGenW minBy active hype = do
 fromActiveTravGenW
   :: (Ord n, Ord t)
   => (forall a. (a -> Weight) -> [a] -> [a])
-  -> A.Active
+  -> A.Active n
   -> A.Trav n t
   -> A.Hype n t
   -> [([Deriv UnNorm n (Tok t)], Weight)]
@@ -872,9 +920,12 @@ fromActiveTravGenW minBy _p trav hype =
     A.Empty q _ -> do
       (ts, w) <- activeDerivs q
       return (emptyNode : ts, w)
-    A.Foot q x _ -> do
+--     A.Foot q x _ -> do
+--       (ts, w) <- activeDerivs q
+--       return (footNode x : ts, w)
+    A.PredictWrapping q x _ -> do
       (ts, w) <- activeDerivs q
-      return (footNode x : ts, w)
+      return (dDaughterNode x : ts, w)
     A.Subst qp qa _ -> do
       (ts, w) <- activeDerivs qa
       (t, w') <- passiveDerivs qp
@@ -983,14 +1034,14 @@ passiveTravEncodes
   -> Bool
 passiveTravEncodes p trav hype root = case trav of
 
-  A.Adjoin qa qm _ -> isJust $ do
-    (ini, aux) <- unAdjoinTree root
-    guard $ passiveEncodes qa hype aux
-    guard $ passiveEncodes qm hype ini
-
---     [ adjoinTree ini aux
---     | aux <- passiveDerivs qa
---     , ini <- passiveDerivs qm ]
+--   A.Adjoin qa qm _ -> isJust $ do
+--     (ini, aux) <- unAdjoinTree root
+--     guard $ passiveEncodes qa hype aux
+--     guard $ passiveEncodes qm hype ini
+-- 
+-- --     [ adjoinTree ini aux
+-- --     | aux <- passiveDerivs qa
+-- --     , ini <- passiveDerivs qm ]
 
   A.Deactivate q _ -> isJust $ do
     ts <- unTree hype p root
@@ -1005,7 +1056,7 @@ passiveTravEncodes p trav hype root = case trav of
 -- | Check if the derivation is represented by the active item.
 activeEncodes
   :: (Ord n, Ord t)
-  => A.Active
+  => A.Active n
   -> A.Hype n t
   -> [Deriv UnNorm n (Tok t)]
   -> Bool
@@ -1013,10 +1064,10 @@ activeEncodes active hype deriv = case A.activeTrav active hype of
   Nothing  -> case Q.lookup (A.ItemA active) (A.waiting hype) of
     Just _ -> error $
       "fromActive: active item in the waiting queue"
-      ++ "\n" ++ show active
+      -- ++ "\n" ++ show active
     Nothing -> error $
       "fromActive: unknown active item (not even in the queue)"
-      ++ "\n" ++ show active
+      -- ++ "\n" ++ show active
   Just ext -> if S.null (A.prioTrav ext)
     then deriv == []
     else or
@@ -1028,7 +1079,7 @@ activeEncodes active hype deriv = case A.activeTrav active hype of
 -- together with the corresponding traversal (hyperarc).
 activeTravEncodes
   :: (Ord n, Ord t)
-  => A.Active
+  => A.Active n
   -> A.Trav n t
   -> A.Hype n t
   -> [Deriv UnNorm n (Tok t)]
@@ -1051,13 +1102,13 @@ activeTravEncodes _p trav hype root = case trav of
 --     [ emptyNode : ts
 --     | ts <- activeDerivs q ]
 
-  A.Foot q x _ -> isJust $ do
-    deriv : ts <- return root
-    guard $ deriv == footNode x
-    guard $ activeEncodes q hype ts
-
---     [ footNode x : ts
---     | ts <- activeDerivs q ]
+--   A.Foot q x _ -> isJust $ do
+--     deriv : ts <- return root
+--     guard $ deriv == footNode x
+--     guard $ activeEncodes q hype ts
+-- 
+-- --     [ footNode x : ts
+-- --     | ts <- activeDerivs q ]
 
   A.Subst qp qa _ -> isJust $ do
     deriv : ts <- return root
@@ -1111,21 +1162,21 @@ emptyRevHype = RevHype M.empty
 -- (or both, if no corresponding 'A' or 'P' suffix).
 data RevTrav n t
     = ScanA
-        { outItemA :: A.Active
+        { outItemA :: A.Active n
         -- ^ The output active item
         , scanTerm :: Tok t
         -- ^ The scanned terminal
         }
     -- ^ Scan: scan the leaf terminal with a terminal from the input
     | EmptyA
-        { outItemA :: A.Active
+        { outItemA :: A.Active n
         -- ^ The output active item
         }
     -- ^ Empty: scan the empty terminal
     | SubstP
-        { outItemA :: A.Active
+        { outItemA :: A.Active n
         -- ^ The output active or passive item
-        , actArg   :: A.Active
+        , actArg   :: A.Active n
         -- ^ The active argument of the action
         }
     -- ^ Pseudo substitution: match the source passive item against the leaf
@@ -1133,45 +1184,45 @@ data RevTrav n t
     | SubstA
         { passArg  :: A.Passive n t
         -- ^ The passive argument of the action
-        , outItemA :: A.Active
+        , outItemA :: A.Active n
         -- ^ The output active or passive item
         }
     -- ^ Pseudo substitution: substitute the leaf of the source item with
     -- the given passive item
-    | FootA
-        { outItemA :: A.Active
-        -- ^ The output active or passive item
-        , theFoot  :: n
-        -- ^ The foot non-terminal
-        }
-    -- ^ Foot adjoin: match the foot of the source item with the given
-    -- passive item
-    | AdjoinP
-        { outItemP :: A.Passive n t
-        -- ^ The output passive item
-        , passMod  :: A.Passive n t
-        -- ^ The modified item
-        }
-    -- ^ Adjoin terminate: adjoin the source auxiliary item to
-    -- the given passive item
-    | ModifyP
-        { passAdj  :: A.Passive n t
-        -- ^ The adjoined item
-        , outItemP :: A.Passive n t
-        -- ^ The output passive item
-        }
+--     | FootA
+--         { outItemA :: A.Active n
+--         -- ^ The output active or passive item
+--         , theFoot  :: n
+--         -- ^ The foot non-terminal
+--         }
+--     -- ^ Foot adjoin: match the foot of the source item with the given
+--     -- passive item
+--     | AdjoinP
+--         { outItemP :: A.Passive n t
+--         -- ^ The output passive item
+--         , passMod  :: A.Passive n t
+--         -- ^ The modified item
+--         }
+--     -- ^ Adjoin terminate: adjoin the source auxiliary item to
+--     -- the given passive item
+--     | ModifyP
+--         { passAdj  :: A.Passive n t
+--         -- ^ The adjoined item
+--         , outItemP :: A.Passive n t
+--         -- ^ The output passive item
+--         }
     -- ^ Adjoin terminate: modify the source passive item with the given
     -- auxiliary item
     | SisterAdjoinP
-        { actArg   :: A.Active
+        { actArg   :: A.Active n
         -- ^ The modified item
-        , outItemA :: A.Active
-        -- ^ The output acitve item
+        , outItemA :: A.Active n
+       -- ^ The output acitve item
         }
     | SisterAdjoinA
         { passArg  :: A.Passive n t
         -- ^ The sister-adjoined item
-        , outItemA :: A.Active
+        , outItemA :: A.Active n
         -- ^ The output acitve item
         }
     | DeactivateA
@@ -1274,18 +1325,18 @@ upFromPassiveTrav source revTrav sourceDerivs hype revHype =
       -- once we have the combined derivations of the source nodes, we proceed upwards
       -- by going to the unkown target item with the derivations we have
       in  upFromActive outItemA combinedDerivs hype revHype
-    AdjoinP{..} ->
-      let combinedDerivs _ =
-            [ adjoinTree ini aux
-            | aux <- sourceDerivs ()
-            , ini <- fromPassive passMod hype ]
-      in  upFromPassive outItemP combinedDerivs hype revHype
-    ModifyP{..} ->
-      let combinedDerivs _ =
-            [ adjoinTree ini aux
-            | aux <- fromPassive passAdj hype
-            , ini <- sourceDerivs () ]
-      in  upFromPassive outItemP combinedDerivs hype revHype
+--     AdjoinP{..} ->
+--       let combinedDerivs _ =
+--             [ adjoinTree ini aux
+--             | aux <- sourceDerivs ()
+--             , ini <- fromPassive passMod hype ]
+--       in  upFromPassive outItemP combinedDerivs hype revHype
+--     ModifyP{..} ->
+--       let combinedDerivs _ =
+--             [ adjoinTree ini aux
+--             | aux <- fromPassive passAdj hype
+--             , ini <- sourceDerivs () ]
+--       in  upFromPassive outItemP combinedDerivs hype revHype
     SisterAdjoinP{..} ->
       let combinedDerivs _ =
             [ t : ts
@@ -1299,7 +1350,7 @@ upFromPassiveTrav source revTrav sourceDerivs hype revHype =
 -- go through the given item for which partial derivations are known.
 upFromActive
   :: (Ord n, Ord t)
-  => A.Active
+  => A.Active n
   -> (() -> [[Deriv UnNorm n (Tok t)]])
   -- ^ Derivation corresponding to the active node
   -> A.Hype n t
@@ -1313,7 +1364,7 @@ upFromActive active activeDerivs hype revHype = concat
 
 upFromActiveTrav
   :: (Ord n, Ord t)
-  => A.Active
+  => A.Active n
      -- ^ Source hypernode (active item)
   -> RevTrav n t
      -- ^ Traversal to be followed from the source node
@@ -1335,11 +1386,11 @@ upFromActiveTrav _source revTrav sourceDerivs hype revHype =
             | ts <- sourceDerivs () -- fromActive actArg hype
             , t  <- fromPassive passArg hype ]
       in  upFromActive outItemA combinedDerivs hype revHype
-    FootA{..} ->
-      let combinedDerivs _ =
-            [ footNode theFoot : ts
-            | ts <- sourceDerivs () ]
-      in  upFromActive outItemA combinedDerivs hype revHype
+--     FootA{..} ->
+--       let combinedDerivs _ =
+--             [ footNode theFoot : ts
+--             | ts <- sourceDerivs () ]
+--       in  upFromActive outItemA combinedDerivs hype revHype
     SisterAdjoinA{..} ->
       let combinedDerivs _ =
             [ t : ts
@@ -1543,8 +1594,10 @@ procModif A.HypeModif{..}
       A.Scan{..} -> goNodeA scanFrom
       A.Empty{..} -> goNodeA scanFrom
       A.Subst{..} -> goNodeP passArg >> goNodeA actArg
-      A.Foot{..} -> goNodeA actArg
-      A.Adjoin{..} -> goNodeP passAdj >> goNodeP passMod
+      -- A.Foot{..} -> goNodeA actArg
+      A.PredictWrapping{..} -> goNodeA actArg
+      -- A.Adjoin{..} -> goNodeP passAdj >> goNodeP passMod
+      A.CompleteWrapping{..} -> goNodeP passWrp >> goNodeP passMod
       A.SisterAdjoin{..} -> goNodeP passArg >> goNodeA actArg
       A.Deactivate{..} -> goNodeA actArg
       where m << n = n >> m
@@ -1626,12 +1679,12 @@ turnAround item trav = case trav of
   A.Subst{..} ->
     [ (A.ItemP passArg, SubstP (act item) actArg)
     , (A.ItemA actArg, SubstA passArg (act item)) ]
-  A.Foot{..} ->
-    [ (A.ItemA actArg, FootA (act item) theFoot) ]
-  A.Adjoin{..} ->
-    let target = pass item in
-    [ (A.ItemP passAdj, AdjoinP target passMod)
-    , (A.ItemP passMod, ModifyP passAdj target) ]
+--   A.Foot{..} ->
+--     [ (A.ItemA actArg, FootA (act item) theFoot) ]
+--   A.Adjoin{..} ->
+--     let target = pass item in
+--     [ (A.ItemP passAdj, AdjoinP target passMod)
+--     , (A.ItemP passMod, ModifyP passAdj target) ]
   A.SisterAdjoin{..} ->
     let target = act item in
     [ (A.ItemP passArg, SisterAdjoinP actArg target)

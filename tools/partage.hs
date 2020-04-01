@@ -37,10 +37,10 @@ import qualified Pipes as P
 
 import qualified NLP.Partage.Tree.Other as O
 import qualified NLP.Partage.DAG as DAG
--- import qualified NLP.Partage.AStar as A
--- import qualified NLP.Partage.AStar.Chart as C
--- import qualified NLP.Partage.AStar.Deriv as D
--- import qualified NLP.Partage.AStar.Deriv.Gorn as DG
+import qualified NLP.Partage.AStar as A
+import qualified NLP.Partage.AStar.Chart as C
+import qualified NLP.Partage.AStar.Deriv as D
+import qualified NLP.Partage.AStar.Deriv.Gorn as DG
 import qualified NLP.Partage.Earley as E
 import qualified NLP.Partage.Format.Brackets as Br
 
@@ -428,6 +428,143 @@ run cmd =
 --           LIO.putStrLn . Br.showTree . fmap rmTokID $ O.unTree tree
         putStrLn ""
 
+
+    AStar{..} -> do
+
+      -- Read input supertagging file
+      let parseSuper = Br.parseSuperProb
+          filterLen =
+            case maxLen of
+              Nothing -> id
+              Just ml -> filter ((<=ml) . length)
+      super <-
+          filterLen
+        . limitTagsProb minProb
+        . limitDepsProb minProb
+        . limitTagsBeta betaParam
+        . limitDepsBeta betaParam
+        . limitDepsNum maxDeps
+        . limitTagsNum maxTags
+        . parseSuper
+        <$> readInput inputPath
+
+      forM_ super $ \sent -> do
+
+        let
+          -- Add token IDs in order to distinguish tokens with identical word
+          -- forms (which may have different supertags)
+          input = zip [0 :: Int ..] (map Br.tokWord sent)
+          inputVect = V.fromList (map Br.tokWord sent)
+
+          -- Calculate the position map (mapping from tokens to their
+          -- positions)
+          posMap = M.fromList [(x, fst x) | x <- input]
+
+          -- Create the corresponding dependency map
+          depMap = mkDepMap' useSoftMax $ zip [0 :: Int ..] sent
+
+          -- Create the compressed grammar representation
+          gram
+            = DAG.mkGram
+            . anchorTags
+            . zip [0 :: Int ..]
+            $ sent
+          automat =
+            A.mkAuto
+              memoTerm gram (A.fromList input) posMap depMap
+          memoTerm = Memo.wrap
+            (\i -> (i, inputVect V.! i))
+            (\(i, _w) -> i)
+            Memo.integral
+
+        -- Check against the gold file or perform simple recognition
+        when (verbosity > 0) $ do
+          putStr "# SENT: "
+          TIO.putStrLn . T.unwords $ map snd input
+          putStr "# LENGTH: "
+          print $ length input
+
+        begTime <- Time.getCurrentTime
+        hypeRef <- IORef.newIORef Nothing
+        let n = length input
+            consume = do
+              A.HypeModif{..} <- P.await
+              case (modifType, modifItem) of
+                (A.NewNode, A.ItemP p) ->
+                  -- if (D.isFinal_ modifHype startSym n p) then do
+                  if (C.isFinal startSym n (A.automat modifHype) p) then do
+                    P.liftIO $ do
+                      semiTime <- Time.getCurrentTime
+                      IORef.modifyIORef hypeRef $ \case
+                        Nothing -> Just (modifHype, semiTime)
+                        Just x  -> Just x
+--                     semiTime <- P.liftIO Time.getCurrentTime
+--                     P.liftIO . IORef.writeIORef hypeRef $ Just (modifHype, semiTime)
+                    if fullHype
+                      then consume
+                      else return modifHype
+                  else consume
+                _ -> consume
+        finalHype <- A.earleyAutoP automat (A.fromList input) consume
+        endTime <- Time.getCurrentTime
+        (semiHype, semiTime) <- maybe (finalHype, endTime) id
+          <$> IORef.readIORef hypeRef
+        when (verbosity > 0) $ do
+--           let reco = (not.null) (A.finalFrom startSym n semiHype)
+--           putStr "# RECO: "
+--           print reco
+          putStr "# ARCS: "
+          putStr (show n)
+          putStr "\t"
+          putStr (show $ A.hyperEdgesNum semiHype)
+          putStr "\t"
+          putStr $ show (semiTime `Time.diffUTCTime` begTime)
+          if fullHype then do
+            putStr "\t"
+            putStr (show $ A.hyperEdgesNum finalHype)
+            putStr "\t"
+            print (endTime `Time.diffUTCTime` begTime)
+          else do
+            putStrLn ""
+
+        -- Calculating derivations
+        let getDerivs () =
+              if allDerivs
+                 then D.derivTreesAllW finalHype startSym (length input)
+                 else D.derivTreesW finalHype startSym (length input)
+
+        -- Calculate the derivations
+        let derivs = getDerivs ()
+        when (null derivs) $ do
+          putStr "# NO PARSE FOR: "
+          TIO.putStrLn . T.unwords $ map snd input
+
+        case showParseNum of
+          Nothing -> return ()
+          Just k -> do
+            error "not implemented"
+--             putStr "# PARSE NUM: "
+--             putStrLn . show $ sum
+--               -- Evaluate the trees to avoid the memory leak
+--               [ L.length txtTree `seq` (1 :: Int)
+--               | (deriv, _weight) <- take k (getDerivs ())
+--               , let txtTree = showParse deriv
+--               ]
+
+        -- Print a single best derivation 
+        forM_ (take showParses derivs) $ \(deriv, w) -> do
+          if fullParse
+             then renderParse deriv >> putStrLn ""
+             else renderDeriv deriv
+          when (verbosity > 0) $ do
+            putStrLn $ "# WEIGHT: " ++ show w
+            when (verbosity > 1) $ do
+              putStrLn
+                . R.drawTree . fmap show
+                . D.deriv4show . D.normalize
+                $ deriv
+            -- putStrLn ""
+        putStrLn ""
 
 --     AStar{..} -> do
 -- 
@@ -824,51 +961,51 @@ renderInput inp = do
 --------------------------------------------------
 
 
--- -- | Render the given derivation.
--- renderDeriv 
---   :: D.Deriv D.UnNorm T.Text (A.Tok (Int, T.Text))
---   -> IO ()
--- renderDeriv deriv0 = do
---   let deriv = DG.fromDeriv deriv0
---       tagMap = tagsFromDeriv deriv
---       depMap = depsFromDeriv deriv
---       getPos = L.pack . show . (+1) . A.position
---       getTerm = L.fromStrict . snd . A.terminal
---   forM_ (M.toList tagMap) $ \(tok, et) -> do
---     LIO.putStr . L.intercalate "," $
---       map getPos (S.toList tok)
---     LIO.putStr "\t"
---     LIO.putStr . L.intercalate "," $
---       map getTerm (S.toList tok)
---     LIO.putStr "\t"
---     LIO.putStr . L.intercalate "," $
---         maybe ["0"] (map getPos . S.toList) $
---           M.lookup tok depMap
---     LIO.putStr "\t"
---     LIO.putStrLn . Br.showTree $ fmap rmTokID et
--- 
--- 
--- -- | Render the given derivation.
--- renderParse :: D.Deriv D.UnNorm T.Text (A.Tok (Int, T.Text)) -> IO ()
--- renderParse = LIO.putStr . showParse
--- 
--- 
--- -- | Render the given derivation.
--- showParse 
---   :: D.Deriv D.UnNorm T.Text (A.Tok (Int, T.Text))
---   -> L.Text
--- showParse deriv
---   = showIt
---   . check
---   $ parse
---   where
---     showIt = Br.showTree . fmap rmTokID'
---     parse = fst $ D.toParse deriv
---     check t =
---       let posList = map A.position (catMaybes $ O.project t) in
---       if posList == List.sort posList
---          then t
---          else error "partage.renderParse: words not in order!"
+-- | Render the given derivation.
+renderDeriv 
+  :: D.Deriv D.UnNorm T.Text (A.Tok (Int, T.Text))
+  -> IO ()
+renderDeriv deriv0 = do
+  let deriv = DG.fromDeriv deriv0
+      tagMap = tagsFromDeriv deriv
+      depMap = depsFromDeriv deriv
+      getPos = L.pack . show . (+1) . A.position
+      getTerm = L.fromStrict . snd . A.terminal
+  forM_ (M.toList tagMap) $ \(tok, et) -> do
+    LIO.putStr . L.intercalate "," $
+      map getPos (S.toList tok)
+    LIO.putStr "\t"
+    LIO.putStr . L.intercalate "," $
+      map getTerm (S.toList tok)
+    LIO.putStr "\t"
+    LIO.putStr . L.intercalate "," $
+        maybe ["0"] (map getPos . S.toList) $
+          M.lookup tok depMap
+    LIO.putStr "\t"
+    LIO.putStrLn . Br.showTree $ fmap rmTokID et
+
+
+-- | Render the given derivation.
+renderParse :: D.Deriv D.UnNorm T.Text (A.Tok (Int, T.Text)) -> IO ()
+renderParse = LIO.putStr . showParse
+
+
+-- | Render the given derivation.
+showParse 
+  :: D.Deriv D.UnNorm T.Text (A.Tok (Int, T.Text))
+  -> L.Text
+showParse deriv
+  = showIt
+  . check
+  $ parse
+  where
+    showIt = Br.showTree . fmap rmTokID'
+    parse = fst $ D.toParse deriv
+    check t =
+      let posList = map A.position (catMaybes $ O.project t) in
+      if posList == List.sort posList
+         then t
+         else error "partage.renderParse: words not in order!"
 
 
 --------------------------------------------------
@@ -876,48 +1013,48 @@ renderInput inp = do
 --------------------------------------------------
 
 
--- -- | Complex token.
--- type Tok t = S.Set (A.Tok t)
--- 
--- 
--- -- | Retrieve the list of selected ETs for the individual tokens.
--- tagsFromDeriv
---   :: DG.Deriv n (A.Tok t)
---   -> M.Map (Tok t) (O.Tree n (Maybe t))
--- tagsFromDeriv =
---   go
---     where
---       go DG.Deriv{..} =
---         let tok = getTok rootET
---             chMap = M.unions . map go . concat $ M.elems modifs
---         in  M.insert tok (fmap (O.mapTerm $ fmap A.terminal) rootET) chMap
--- 
--- 
--- -- | Retrieve the map of selected dependency heads.
--- depsFromDeriv
---   :: DG.Deriv n (A.Tok t)
---   -- -> M.Map (Tok t) (S.Set (Tok t))
---   -> M.Map (Tok t) (Tok t)
--- depsFromDeriv =
---   snd . go
---     where
---       go DG.Deriv{..} =
---         let tok = getTok rootET
---             children = map go . concat $ M.elems modifs
---             chToks = map fst children
---             chMap = M.unions $ map snd children
---             newMap = List.foldl' (\m dep -> M.insert dep tok m) chMap chToks
---         in  (tok, newMap)
--- 
--- 
+-- | Complex token.
+type Tok t = S.Set (A.Tok t)
+
+
+-- | Retrieve the list of selected ETs for the individual tokens.
+tagsFromDeriv
+  :: DG.Deriv n (A.Tok t)
+  -> M.Map (Tok t) (O.Tree n (Maybe t))
+tagsFromDeriv =
+  go
+    where
+      go DG.Deriv{..} =
+        let tok = getTok rootET
+            chMap = M.unions . map go . concat $ M.elems modifs
+        in  M.insert tok (fmap (O.mapTerm $ fmap A.terminal) rootET) chMap
+
+
+-- | Retrieve the map of selected dependency heads.
+depsFromDeriv
+  :: DG.Deriv n (A.Tok t)
+  -- -> M.Map (Tok t) (S.Set (Tok t))
+  -> M.Map (Tok t) (Tok t)
+depsFromDeriv =
+  snd . go
+    where
+      go DG.Deriv{..} =
+        let tok = getTok rootET
+            children = map go . concat $ M.elems modifs
+            chToks = map fst children
+            chMap = M.unions $ map snd children
+            newMap = List.foldl' (\m dep -> M.insert dep tok m) chMap chToks
+        in  (tok, newMap)
+
+
 -- -- | Determine the position set in the given tree.
 -- getPos :: O.Tree n (A.Tok t) -> S.Set A.Pos
 -- getPos = S.fromList . map A.position . O.project
--- 
--- 
--- -- | Determine the token set in the given tree.
--- getTok :: O.Tree n (Maybe (A.Tok t)) -> S.Set (A.Tok t)
--- getTok = S.fromList . catMaybes . O.project
+
+
+-- | Determine the token set in the given tree.
+getTok :: O.Tree n (Maybe (A.Tok t)) -> S.Set (A.Tok t)
+getTok = S.fromList . catMaybes . O.project
 
 
 --------------------------------------------------
@@ -938,17 +1075,19 @@ rmTokID = \case
   O.Term Nothing -> O.Term Nothing
   O.NonTerm x -> O.NonTerm x
   O.Sister x -> O.Sister x
+  O.DNode x -> O.DNode x
 --   O.Foot x -> O.Foot x
 
 
--- -- | Remove info about token IDs.
--- rmTokID' :: O.Node n (Maybe (A.Tok (Int, t))) -> O.Node n (Maybe t)
--- rmTokID' = \case
---   -- O.Term tok -> O.Term . snd $ A.terminal tok
---   O.Term (Just tok) -> O.Term . Just . snd $ A.terminal tok
---   O.Term Nothing -> O.Term Nothing
---   O.NonTerm x -> O.NonTerm x
---   O.Sister x -> O.Sister x
+-- | Remove info about token IDs.
+rmTokID' :: O.Node n (Maybe (A.Tok (Int, t))) -> O.Node n (Maybe t)
+rmTokID' = \case
+  -- O.Term tok -> O.Term . snd $ A.terminal tok
+  O.Term (Just tok) -> O.Term . Just . snd $ A.terminal tok
+  O.Term Nothing -> O.Term Nothing
+  O.NonTerm x -> O.NonTerm x
+  O.Sister x -> O.Sister x
+  O.DNode x -> O.DNode x
 --   O.Foot x -> O.Foot x
 
 

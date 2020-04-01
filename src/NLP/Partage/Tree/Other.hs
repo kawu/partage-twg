@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 
 -- | Alternative (to "NLP.Partage.Tree") representation of TAG
@@ -29,11 +30,14 @@ module NLP.Partage.Tree.Other
 , hasRoot
 , project
 -- , replaceFoot
+, replaceSlot
+, replaceSlot'
 ) where
 
 
 -- import           Control.Applicative ((<$>))
 import           Control.Monad (msum) -- , foldM)
+import qualified Control.Monad.State.Strict as State
 import qualified Data.Foldable as F
 
 import qualified Data.Tree as R
@@ -202,3 +206,28 @@ hasRoot _ _ = False
 --   case n of
 --     Foot _ -> t
 --     _      -> R.Node n (map (replaceFoot t) xs)
+
+
+-- | Replace the first "slot" (substitution node) in the second tree with the
+-- first tree.
+replaceSlot :: T.Tree n t -> T.Tree n t -> T.Tree n t
+replaceSlot plug tree =
+  State.evalState (go tree) True
+  where
+    go t@T.Leaf{} = return t
+    go t@(T.Branch _ []) = do
+      flag <- State.get
+      if flag
+         then do
+           State.put False
+           return plug
+         else do
+           return t
+    go (T.Branch x ts) = T.Branch x <$> mapM go ts
+
+
+-- | Version of `replaceSlot` working on a different representation of trees.
+replaceSlot' :: Tree n t -> Tree n t -> Tree n t
+replaceSlot' plug tree =
+  unTree $ replaceSlot (mkTree plug) (mkTree tree)
+

@@ -16,6 +16,7 @@ import           Test.Tasty              (TestTree)
 import qualified Data.MemoCombinators    as Memo
 import qualified Data.Set                as S
 import qualified Data.Map                as M
+import qualified Data.Text               as Txt
 import           Data.Maybe              (maybeToList)
 
 import qualified Pipes                   as P
@@ -80,7 +81,10 @@ testAStar =
       (uncurry T.Term)
       ((,) <$> T.orth <*> T.pos)
       (Memo.pair memoString (Memo.maybe Memo.integral))
-    memoString = Memo.list Memo.char
+    -- memoString = Memo.list Memo.char
+    memoString = Memo.wrap
+      Txt.pack Txt.unpack
+      (Memo.list Memo.char)
     posMap input = M.fromList $ do
       tok <- input
       pos <- maybeToList (T.pos tok)

@@ -57,23 +57,23 @@ import qualified NLP.Partage.Format.Brackets as Br
 
 
 -- | Local type aliases.
-type Tr    = Tree String (Maybe Term)
-type OTree = O.Tree String (Maybe Term)
--- type Hype  = AStar.Hype String Term
--- type Deriv = Deriv.Deriv Deriv.UnNorm String (Tok Term)
--- type ModifDerivs = Deriv.ModifDerivs Deriv.UnNorm String Term
+type Tr    = Tree T.Text (Maybe Term)
+type OTree = O.Tree T.Text (Maybe Term)
+-- type Hype  = AStar.Hype T.Text Term
+-- type Deriv = Deriv.Deriv Deriv.UnNorm T.Text (Tok Term)
+-- type ModifDerivs = Deriv.ModifDerivs Deriv.UnNorm T.Text Term
 
 
 -- | A terminal/token.
 data Term = Term 
-  { orth :: String
+  { orth :: T.Text
     -- ^ The orthographic form
   , pos :: Maybe Int
     -- ^ The position (can be left underspecified)
   } deriving (Eq, Ord)
 
 instance Show Term where
-  show t = orth t ++
+  show t = T.unpack (orth t) ++
     case pos t of
       Nothing -> ""
       Just k -> ":" ++ show k
@@ -96,7 +96,7 @@ dnode x = R.Node (O.DNode x)
 -- | A single test case.
 data Test = Test {
     -- | Starting symbol
-      startSym :: String
+      startSym :: T.Text
     -- | The sentence to parse (list of terminals)
     , testSent :: [Term]
     -- | Dependency weights/restrictions (to each position, the set of
@@ -110,7 +110,7 @@ data Test = Test {
 instance Show Test where
   show Test{..}
     = "("
-    ++ startSym
+    ++ T.unpack startSym
     ++ ", "
     ++ show testSent
     ++ showHeads
@@ -136,7 +136,7 @@ data TestRes
       -- ^ No parse
     | Yes
       -- ^ Parse
-    | Trees (S.Set Tr)
+    | Trees (S.Set T.Text)
       -- ^ Parsing results
     deriving (Eq, Ord)
 
@@ -145,17 +145,17 @@ instance Show TestRes where
   show No = "No"
   show Yes = "Yes"
   show (Trees ts) =
-    "{" ++ L.unpack lazyText ++ "}"
+    "{" ++ T.unpack text ++ "}"
       where
-        showOne = Br.showTree . fmap process . O.unTree
-        lazyText = L.intercalate " " (map showOne $ S.toList ts)
-        -- process (O.Term t) = O.Term . Just . T.pack $ show t
-        process (O.Term (Just t)) = O.Term . Just . T.pack $ show t
-        process (O.Term Nothing) = O.Term Nothing
-        process (O.NonTerm x) = O.NonTerm $ T.pack x
-        process (O.Sister x) = O.Sister $ T.pack x
-        -- process (O.Foot x) = O.Foot $ T.pack x
-        process (O.DNode x) = O.DNode $ T.pack x
+        text = T.intercalate ", " (S.toList ts)
+--         showOne :: Tr -> L.Text
+--         showOne = Br.showTree . fmap process . O.unTree
+--         lazyText = L.intercalate ", " (map showOne $ S.toList ts)
+--         process (O.Term (Just t)) = O.Term . Just . T.pack $ show t
+--         process (O.Term Nothing) = O.Term Nothing
+--         process (O.NonTerm x) = O.NonTerm x
+--         process (O.Sister x) = O.Sister x
+--         process (O.DNode x) = O.DNode x
     
 
 -- ---------------------------------------------------------------------
@@ -497,7 +497,7 @@ instance Show TestRes where
 --   ]
 --     where
 --       test start sent res = Test start (toks sent) M.empty res
---       toks = map tok . words
+--       toks = map tok . T.words
 --       tok t = Term t Nothing
 -- 
 -- 
@@ -532,7 +532,7 @@ instance Show TestRes where
 --   , test "S" ("p a e b") No ]
 --     where
 --       test start sent res = Test start (toks sent) M.empty res
---       toks = map tok . words
+--       toks = map tok . T.words
 --       tok t = Term t Nothing
 -- 
 -- 
@@ -571,7 +571,7 @@ instance Show TestRes where
 --   [ test "S" ("x a y") Yes ]
 --     where
 --       test start sent res = Test start (toks sent) M.empty res
---       toks = map tok . words
+--       toks = map tok . T.words
 --       tok t = Term t Nothing
 -- 
 -- 
@@ -638,22 +638,24 @@ gram5Tests :: [Test]
 gram5Tests =
     [ test "S" ("Ben eats pasta") Yes
     , test "S" ("Ben eats") . Trees . S.singleton $
-        Branch "S"
-        [ Branch "NP"
-          [ Branch "N" [mkLeaf "Ben"] ]
-        , Branch "VP"
-          [ Branch "V" [mkLeaf "eats"] ]
-        ]
+        "(S (NP (N Ben)) (VP (V eats)))"
+--         Branch "S"
+--         [ Branch "NP"
+--           [ Branch "N" [mkLeaf "Ben"] ]
+--         , Branch "VP"
+--           [ Branch "V" [mkLeaf "eats"] ]
+--         ]
     , test "S" ("Ben vigorously eats pasta") . Trees . S.singleton $
-        Branch "S"
-        [ Branch "NP"
-          [ Branch "N" [mkLeaf "Ben"] ]
-        , Branch "VP"
-          [ Branch "Adv" [mkLeaf "vigorously"]
-          , Branch "V" [mkLeaf "eats"]
-          , Branch "NP"
-            [ Branch "N" [mkLeaf "pasta"] ] ]
-        ]
+        "(S (NP (N Ben)) (VP (Adv vigorously) (V eats) (NP (N pasta))))"
+--         Branch "S"
+--         [ Branch "NP"
+--           [ Branch "N" [mkLeaf "Ben"] ]
+--         , Branch "VP"
+--           [ Branch "Adv" [mkLeaf "vigorously"]
+--           , Branch "V" [mkLeaf "eats"]
+--           , Branch "NP"
+--             [ Branch "N" [mkLeaf "pasta"] ] ]
+--         ]
     , test "S" ("Ben eats pasta vigorously") Yes
     , test "S" ("Ben eats vigorously pasta") Yes
     , test "S" ("vigorously Ben eats pasta") No
@@ -670,7 +672,7 @@ gram5Tests =
     ]
     where
       test start sent res = Test start (toks sent) M.empty res
-      toks = map tok . words
+      toks = map tok . T.words
       tok t = Term t Nothing
       mkLeaf = Leaf . Just . tok
 
@@ -718,7 +720,7 @@ gram6Tests =
   [ test "S" ("en excuser") No ]
     where
       test start sent res = Test start (toks sent) M.empty res
-      toks = map tok . words
+      toks = map tok . T.words
       tok t = Term t Nothing
 
 
@@ -853,7 +855,7 @@ mkGram9 = map (,0)
 
 gram9Tests :: [Test]
 gram9Tests =
-  [ test "S" (words "a a b") Yes
+  [ test "S" (T.words "a a b") Yes
   ] where
       test start sent res = Test start (map tok sent) M.empty res
       tok t = Term t Nothing
@@ -886,7 +888,7 @@ mkGram10 = map (,0)
 
 gram10Tests :: [Test]
 gram10Tests =
-  [ test "S" (words "seen shaking") Yes
+  [ test "S" (T.words "seen shaking") Yes
   ] where
       test start sent res = Test start (map tok sent) M.empty res
       tok t = Term t Nothing
@@ -1025,7 +1027,7 @@ gram12Tests =
     ]
     where
       test start sent res = Test start (toks sent) M.empty res
-      toks = map tok . words
+      toks = map tok . T.words
       tok t = Term t Nothing
 
 
@@ -1068,22 +1070,23 @@ gram13Tests :: [Test]
 gram13Tests =
     [ test "R" ("b a a b") Yes
     , test "R" ("b a a b") . Trees . S.singleton $
-        Branch "R"
-        [ Branch "X"
-          [ mkLeaf "b"
-          , Branch "N"
-            [ mkLeaf "a"
-            , mkLeaf "a"
-            ]
-          , mkLeaf "b"
-          ]
-        ]
+        "(R (X b (N a a) b))"
+--         Branch "R"
+--         [ Branch "X"
+--           [ mkLeaf "b"
+--           , Branch "N"
+--             [ mkLeaf "a"
+--             , mkLeaf "a"
+--             ]
+--           , mkLeaf "b"
+--           ]
+--         ]
     , test "R" ("a b") No
     , test "R" ("c a a c") No
     ]
     where
       test start sent res = Test start (toks sent) M.empty res
-      toks = map tok . words
+      toks = map tok . T.words
       tok t = Term t Nothing
       mkLeaf = Leaf . Just . tok
 
@@ -1121,17 +1124,18 @@ gram14Tests :: [Test]
 gram14Tests =
     [ test "X" ("c b b c") Yes
     , test "X" ("c b b c") . Trees . S.singleton $
-        Branch "X"
-        [ mkLeaf "c"
-        , mkLeaf "b"
-        , Branch "A" [mkLeaf "b"]
-        , Branch "B" [mkLeaf "c"]
-        ]
+        "(X c b (A b) (B c))"
+--         Branch "X"
+--         [ mkLeaf "c"
+--         , mkLeaf "b"
+--         , Branch "A" [mkLeaf "b"]
+--         , Branch "B" [mkLeaf "c"]
+--         ]
     , test "X" ("c b c b") No
     ]
     where
       test start sent res = Test start (toks sent) M.empty res
-      toks = map tok . words
+      toks = map tok . T.words
       tok t = Term t Nothing
       mkLeaf = Leaf . Just . tok
 
@@ -1171,7 +1175,7 @@ gram15Tests =
     ]
     where
       test start sent res = Test start (toks sent) M.empty res
-      toks = map tok . words
+      toks = map tok . T.words
       tok t = Term t Nothing
 
 
@@ -1211,8 +1215,51 @@ gram16Tests =
     ]
     where
       test start sent res = Test start (toks sent) M.empty res
-      toks = map tok . words
+      toks = map tok . T.words
       tok t = Term t Nothing
+
+
+---------------------------------------------------------------------
+-- Grammar 17 (Wrapping)
+---------------------------------------------------------------------
+
+
+mkGram17 :: [(OTree, Weight)]
+mkGram17 = map ((,1) . uncurry parseTree)
+  [ ("we", "(NP (PRO <>))")
+  , ("keep", "(CLAUSE (CORE (NP ) (NUC (NUC (V <>)) (NUC ))))")
+  , ("wondering", "(SENTENCE (CLAUSE (NUC#WRAP# (V <>))) (CLAUSE ))")
+  , ("what", "(PrCS (NP-WH (PRO-WH <>)))")
+  , ("mr.", "(NUC_N* (N-PROP <>))")
+  , ("gates", "(NP (CORE_N (NUC_N (N-PROP <>))))")
+  , ("wanted", "(CLAUSE (CORE (CORE (NP ) (NUC (V <>))) (CORE )))")
+  , ("to", "(CORE* (CLM <>))")
+  , ("say", "(CLAUSE (PrCS ) (CORE#WRAP# (CORE (NUC (V <>)))))")
+  ]
+  where
+    parseTree x
+      = fmap (O.mapTerm (\_ -> Just (Term x Nothing)))
+      . Br.parseTree'
+
+
+-- | The purpose of this test is to test the inversed root adjoin
+-- inference operation.
+gram17Tests :: [Test]
+gram17Tests =
+    [ test "SENTENCE" ("we keep wondering what mr. gates wanted to say") Yes
+    , test "SENTENCE" ("we keep wondering what mr. gates wanted to say")
+      . Trees . S.fromList $
+        [ "(SENTENCE (CLAUSE (CORE (NP (PRO we)) (NUC (NUC (V keep)) (NUC (V wondering))))) (CLAUSE (PrCS (NP-WH (PRO-WH what))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.) (N-PROP gates)))) (NUC (V wanted)) (CLM to)) (CORE (CORE (NUC (V say)))))))"
+        , "(SENTENCE (CLAUSE (CORE (NP (PRO we)) (NUC (NUC (V keep)) (NUC (V wondering))))) (CLAUSE (PrCS (NP-WH (PRO-WH what))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.) (N-PROP gates)))) (NUC (V wanted))) (CLM to) (CORE (CORE (NUC (V say)))))))"
+        ,"(SENTENCE (CLAUSE (CORE (NP (PRO we)) (NUC (NUC (V keep)) (NUC (V wondering))))) (CLAUSE (PrCS (NP-WH (PRO-WH what))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.) (N-PROP gates)))) (NUC (V wanted))) (CORE (CLM to) (CORE (NUC (V say)))))))"
+        ,"(SENTENCE (CLAUSE (CORE (NP (PRO we)) (NUC (NUC (V keep)) (NUC (V wondering))))) (CLAUSE (PrCS (NP-WH (PRO-WH what))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.) (N-PROP gates)))) (NUC (V wanted))) (CORE (CORE (CLM to) (NUC (V say)))))))"
+        ]
+    ]
+    where
+      test start sent res = Test start (toks sent) M.empty res
+      toks = map tok . T.words
+      tok t = Term t Nothing
+      mkLeaf = Leaf . Just . tok
 
 
 ---------------------------------------------------------------------
@@ -1234,6 +1281,7 @@ testSuite =
   , (mkGram14, gram14Tests)
   , (mkGram15, gram15Tests)
   , (mkGram16, gram16Tests)
+  , (mkGram17, gram17Tests)
   ]
 
 
@@ -1246,7 +1294,7 @@ testSuite =
 type RecoP 
   = [(OTree, Weight)]
     -- ^ Weighted grammar
-  -> String
+  -> T.Text
     -- ^ Start symbol
   -> [Term]
     -- ^ Sentence to parse
@@ -1259,7 +1307,7 @@ type RecoP
 type ParsedP 
   = [(OTree, Weight)]
     -- ^ Weighted grammar
-  -> String
+  -> T.Text
     -- ^ Start symbol
   -> [Term]
     -- ^ Sentence to parse
@@ -1272,20 +1320,20 @@ type ParsedP
 -- type DerivP
 --   = [(OTree, Weight)]
 --     -- ^ Weighted grammar
---   -> String
+--   -> T.Text
 --     -- ^ Start symbol
 --   -> [Term]
 --     -- ^ Sentence to parse
 --   -> M.Map Int (M.Map Int Weight)
 --     -- ^ Head map
 --   -> IO [Deriv]
--- -- type DerivP = [(Other, Weight)] -> String -> [String] -> IO [Deriv]
+-- -- type DerivP = [(Other, Weight)] -> T.Text -> [T.Text] -> IO [Deriv]
 -- 
 -- 
 -- -- | Derivation pipe
 -- type DerivPipeP
 --   = [(OTree, Weight)]
---   -> String
+--   -> T.Text
 --   -> [Term]
 --   -> M.Map Int (M.Map Int Weight)
 --   -- -> P.Producer ModifDerivs IO Hype
@@ -1293,7 +1341,7 @@ type ParsedP
 -- 
 -- 
 -- -- | Encoding check
--- type EncodeP = Hype -> String -> [Term] -> Deriv -> Bool
+-- type EncodeP = Hype -> T.Text -> [Term] -> Deriv -> Bool
 
 
 -- | An abstract TAG parser.
@@ -1334,6 +1382,15 @@ testTree modName TagParser{..} = testGroup modName $ do
   test <- gramTests
   return $ testIt gram test
   where
+
+    showTree :: Tr -> T.Text
+    showTree = L.toStrict . Br.showTree . fmap process . O.unTree
+    process (O.Term (Just t)) = O.Term . Just . T.pack $ show t
+    process (O.Term Nothing) = O.Term Nothing
+    process (O.NonTerm x) = O.NonTerm x
+    process (O.Sister x) = O.Sister x
+    process (O.DNode x) = O.DNode x
+
     testIt gram test =
       -- make sure that headMap is empty if no dependency support
       if (not dependencySupport <= M.null (headMap test))
@@ -1354,7 +1411,10 @@ testTree modName TagParser{..} = testGroup modName $ do
 
     -- Check if the set of parsed trees is as expected
     testParsing gram Test{..} = case (parsedTrees, testRes) of
-        (Just pa, Trees ts) -> pa gram startSym testSent headMap @@?= ts
+        (Just pa, Trees ts) -> do
+          parsed <- pa gram startSym testSent headMap
+          let ts' = S.fromList . map showTree . S.toList $ parsed
+          ts' @?= ts
         _ -> return ()
 
 --     -- Here we only check if the list of derivations is actually a set

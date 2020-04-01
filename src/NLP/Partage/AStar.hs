@@ -5,7 +5,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE FlexibleContexts #-}
 
 
 -- | A* Earley-style TAG parsing based on automata, with a distinction
@@ -106,7 +105,6 @@ import           Control.Monad      (guard, void, (>=>), when, mplus)
 import           Control.Monad.Trans.Class  (lift)
 -- import           Control.Monad.Trans.Maybe  (MaybeT (..))
 import qualified Control.Monad.RWS.Strict   as RWS
-import qualified Control.Monad.State.Strict as State
 import           Control.Category ((>>>), (.))
 
 import           Data.Function              (on)
@@ -1919,7 +1917,8 @@ tryPredictWrapping p pw = void $ P.runListT $ do
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
     -- liftIO $ putStrLn "==>> PW !!" 
-    lift $ pushInduced q' newDuo (PredictWrapping p q tranCost)
+    lift $ pushInduced q' newDuo (PredictWrapping q nodeNT tranCost)
+    -- lift $ pushInduced q' newDuo (PredictWrapping p q tranCost)
 #ifdef CheckMonotonic
     lift . lift $ testMono "PREDICT-WRAPPING" (p, pw) (q, qw) (q', newDuo)
 #endif
@@ -1993,7 +1992,8 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
     -- liftIO $ putStrLn "==>> PW !!" 
-    lift $ pushInduced q' newDuo (PredictWrapping p q tranCost)
+    -- lift $ pushInduced q' newDuo (PredictWrapping p q tranCost)
+    lift $ pushInduced q' newDuo (PredictWrapping q qNT tranCost)
 #ifdef CheckMonotonic
     lift . lift $ testMono "PREDICT-WRAPPING'" (p, pw) (q, qw) (q', newDuo)
 #endif
@@ -2016,8 +2016,8 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
 --------------------------------------------------
 
 
--- | Wrap a fully-parsed tree represented by `q` over a partially parsed
--- tree represented by `p`.
+-- | Wrap the tree represented by `p` over the fully parsed tree represented by
+-- `q`.
 tryCompleteWrapping
   :: (SOrd t, SOrd n)
   => Passive n t
@@ -2033,7 +2033,7 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
     -- the underlying dag grammar
     dag <- RWS.gets (gramDAG . automat)
     parMap <- RWS.gets (dagParMap . automat)
-    -- make sure the label is top-level
+    -- make sure the node is top-level
     guard $ DAG.isRoot qDID dag
     -- for each available gap
     gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
@@ -2073,7 +2073,7 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
           (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
-    lift $ pushPassive p' newDuo (CompleteWrapping q p depCost)
+    lift $ pushPassive p' newDuo (CompleteWrapping p q depCost)
 #ifdef CheckMonotonic
     lift . lift $ testMono' "COMPLETE-WRAPPING" (p, pw) (q, qw) (p', newDuo)
 --     totalP <- lift . lift $ est2total pw <$> estimateDistP p
@@ -2160,7 +2160,7 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
           (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
-    lift $ pushPassive p' newDuo (CompleteWrapping q p depCost)
+    lift $ pushPassive p' newDuo (CompleteWrapping p q depCost)
 
 #ifdef CheckMonotonic
     lift . lift $ testMono' "COMPLETE-WRAPPING'" (p, pw) (q, qw) (p', newDuo)
@@ -2219,8 +2219,10 @@ fromActive active hype =
         [ ts' ++ ts
         | ts  <- fromActive qa hype
         , ts' <- T.subTrees <$> fromPassive qp hype ]
-    fromActiveTrav _p (PredictWrapping qp qa _) =
-        [ T.Branch (Just (nonTermH (qp ^. dagID) hype)) [] : ts
+    -- fromActiveTrav _p (PredictWrapping qp qa _) =
+    fromActiveTrav _p (PredictWrapping qa x _) =
+        -- [ T.Branch (Just (nonTermH (qp ^. dagID) hype)) [] : ts
+        [ T.Branch (Just x) [] : ts
         | ts <- fromActive qa hype ]
     fromActiveTrav _ _ =
         error "fromActive: impossible fromActiveTrav"
@@ -2241,10 +2243,10 @@ fromPassive passive hype = concat
 --         [ replaceFoot ini aux
 --         | aux <- fromPassive qa hype
 --         , ini <- fromPassive qm hype ]
-    fromPassiveTrav _p (CompleteWrapping qa qm _) =
-      [ replaceSlot ini aux
-      | aux <- rmRoot <$> fromPassive qa hype
-      , ini <- fromPassive qm hype ]
+    fromPassiveTrav _p (CompleteWrapping qw qm _) =
+      [ O.replaceSlot wrp mod
+      | mod <- rmRoot <$> fromPassive qm hype
+      , wrp <- fromPassive qw hype ]
     fromPassiveTrav p (Deactivate q _) =
 --       | dEdgeParent (p ^. dagID) hype = do
 --           [t] <- fromActive q hype
@@ -2258,32 +2260,9 @@ fromPassive passive hype = concat
     -- processDEdge
     fromPassiveTrav _ _ =
         error "fromPassive: impossible fromPassiveTrav"
-    -- Replace foot (the only non-terminal leaf) by the given initial tree.
     -- Mark the root as to-be-removed
     rmRoot x@T.Branch{} = x {T.labelI = Nothing}
     rmRoot x@T.Leaf{} = x
-
-
--- | Replace the first "slot" (substitution node) in the second tree with the
--- first tree.
-replaceSlot :: T.Tree n t -> T.Tree n t -> T.Tree n t
-replaceSlot plug tree =
-  State.evalState (go tree) True
-  where
-    go t@T.Leaf{} = return t
-    go t@(T.Branch _ []) = do
-      flag <- State.get
-      if flag 
-         then do
-           State.put False
-           return plug
-         else do
-           return t
-    go (T.Branch x ts) = T.Branch x <$> mapM go ts
-
--- replaceSlot t (T.Branch _ []) = t
--- replaceSlot t (T.Branch x ts) = T.Branch x $ map (replaceSlot t) ts
--- replaceSlot _ t@(T.Leaf _)    = t
 
 
 -- | Extract the set of parsed trees obtained on the given input

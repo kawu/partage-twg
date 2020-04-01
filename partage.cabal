@@ -62,9 +62,9 @@ library
       , NLP.Partage.Earley.Chart
 
       , NLP.Partage.AStar
---       , NLP.Partage.AStar.Deriv
---       , NLP.Partage.AStar.Deriv.Gorn
--- 
+      , NLP.Partage.AStar.Deriv
+      , NLP.Partage.AStar.Deriv.Gorn
+
       , NLP.Partage.AStar.Base
       , NLP.Partage.AStar.Item
       , NLP.Partage.AStar.Chart

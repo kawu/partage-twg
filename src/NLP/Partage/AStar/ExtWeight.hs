@@ -106,17 +106,17 @@ data Trav n t
     -- TODO: we don't really need the passive argument, since it performs a
     -- prediction-related function.  See also `Foot`.
     | PredictWrapping
-        { _passArg  :: Passive n t
-        -- ^ The passive argument of the action
-        , _actArg   :: Active n
+        { actArg   :: Active n
         -- ^ The active argument of the action
+        , theDNode :: n
+        -- ^ The dnode non-terminal
         , _weight   :: Weight
         -- ^ The traversal weight
         }
     | CompleteWrapping
-        { _passWrp  :: Passive n t
+        { passWrp  :: Passive n t
         -- ^ The wrapping item
-        , _passMod  :: Passive n t
+        , passMod  :: Passive n t
         -- ^ The modified item
         , _weight   :: Weight
         -- ^ The traversal weight
