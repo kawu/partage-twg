@@ -76,12 +76,11 @@ $( makeLenses [''Active] )
 -- TODO: remove the redundant 't' parameter
 data Passive n t = Passive
   { _dagID :: Either (NotFoot n) DID
-    -- ^ We store non-terminal 'n' (actually, NonFoot n) for items
-    -- representing
+    -- ^ We store non-terminal 'n' (actually, NonFoot n) for items representing
     -- fully recognized elementary trees.
   , _spanP :: Span n
     -- ^ Span of the chart item
-  , _ws :: Either Bool DID
+  , _ws :: Bool
     -- ^ TODO: see the inference rules
   } deriving (Show, Eq, Ord)
 $( makeLenses [''Passive] )

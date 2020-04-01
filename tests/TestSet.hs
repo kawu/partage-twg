@@ -926,7 +926,7 @@ gram10Tests =
 
 
 ---------------------------------------------------------------------
--- Grammar 12 (Inversed Wrapping)
+-- Grammar 12 (Wrapping)
 ---------------------------------------------------------------------
 
 
@@ -940,25 +940,22 @@ mkGram12 = map (,1)
       [ node "PRO" [term' "we"]
       ]
     keep =
-      node "CLAUSE"
-      [ node "CORE"
-        [ leaf "NP" 
-        , node "NUC"
-          [ node "NUC" 
-            [ node "V" [term' "keep"]
+      node "SENTENCE"
+      [ node "CLAUSE"
+        [ node "CORE"
+          [ leaf "NP" 
+          , node "NUC"
+            [ node "NUC" 
+              [ node "V" [term' "keep"]
+              ]
+            , leaf "NUC"
             ]
-          , leaf "NUC"
           ]
         ]
       ]
     wondering =
-      node "SENTENCE"
-      [ node "CLAUSE"
-        [ dnode "NUC"
-          [ node "V" [term' "wondering"]
-          ]
-        ]
-      , leaf "CLAUSE"
+      node "NUC"
+      [ node "V" [term' "wondering"]
       ]
     what =
       node "PrCS"
@@ -979,7 +976,7 @@ mkGram12 = map (,1)
         ]
       ]
     wanted =
-      node "CLAUSE"
+      sister "CLAUSE"
       [ node "CORE"
         [ node "CORE"
           [ leaf "NP"
@@ -987,7 +984,6 @@ mkGram12 = map (,1)
             [ node "V" [term' "wanted"]
             ]
           ]
-        , leaf "CORE"
         ]
       ]
     to =
@@ -998,17 +994,34 @@ mkGram12 = map (,1)
       node "CLAUSE"
       [ leaf "PrCS"
       , dnode "CORE"
-        [ node "NUC"
-          [ node "V" [term' "say"]
+        [ node "CORE"
+          [ node "NUC"
+            [ node "V" [term' "say"]
+            ]
           ]
         ]
       ]
+--     say =
+--       sister "CLAUSE"
+--       -- TODO: do we allow sister adjunction to the root of another
+--       -- sister-adjunction tree?
+--       [ node "CLAUSE"
+--         [ leaf "PrCS"
+--         -- TODO: update with wrapping!
+--         , node "CORE"
+--           [ node "NUC"
+--             [ node "V" [term' "say"]
+--             ]
+--           ]
+--         ]
+--       ]
 
 
--- | The purpose of this test is to test the inversed wrapping.
+-- | The purpose of this test is to test the inversed root adjoin
+-- inference operation.
 gram12Tests :: [Test]
 gram12Tests =
-    [ test "SENTENCE" ("we keep wondering what mr gates wanted to say") Yes
+    [ test "SENTENCE" ("we keep wondering what mr gates wanted to say") No
     ]
     where
       test start sent res = Test start (toks sent) M.empty res
