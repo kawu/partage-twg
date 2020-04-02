@@ -1225,7 +1225,7 @@ gram16Tests =
 
 
 mkGram17 :: [(OTree, Weight)]
-mkGram17 = map ((,1) . parseTree) $ zip [1..]
+mkGram17 = map ((,1) . parseTree) $ zip [0..]
   [ ("we", "(NP (PRO <>))")
   , ("keep", "(CLAUSE (CORE (NP ) (NUC (NUC (V <>)) (NUC ))))")
   , ("wondering", "(SENTENCE (CLAUSE (NUC#WRAP# (V <>))) (CLAUSE ))")
@@ -1251,23 +1251,15 @@ gram17Tests :: [Test]
 gram17Tests =
     [ test "SENTENCE" ("we keep wondering what mr. gates wanted to say") Yes
     , testDep "SENTENCE" ("we keep wondering what mr. gates wanted to say")
-        [ (1, [(2, 0)])
-        , (2, [(3, 0)])
-        , (3, [(0, 0)])
-        , (4, [(9, 0)])
-        , (5, [(6, 0)])
-        , (6, [(7, 0)])
-        , (7, [(9, 0)])
-        , (8, [(9, 0)])
-        , (9, [(3, 0)])
+        [ (7, [(8, 1)])
         ] . Trees . S.fromList $
-          ["(SENTENCE (CLAUSE (CORE (NP (PRO we:1)) (NUC (NUC (V keep:2)) (NUC (V wondering:3))))) (CLAUSE (PrCS (NP-WH (PRO-WH what:4))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.:5) (N-PROP gates:6)))) (NUC (V wanted:7))) (CORE (CLM to:8) (NUC (V say:9))))))"]
+          ["(SENTENCE (CLAUSE (CORE (NP (PRO we:0)) (NUC (NUC (V keep:1)) (NUC (V wondering:2))))) (CLAUSE (PrCS (NP-WH (PRO-WH what:3))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.:4) (N-PROP gates:5)))) (NUC (V wanted:6))) (CORE (CLM to:7) (NUC (V say:8))))))"]
     ]
     where
       test start sent res = testDep start sent [] res
       testDep start sent hedMap res = Test
         start
-        [tok x k | (x, k) <- zip (T.words sent) [1..]] 
+        [tok x k | (x, k) <- zip (T.words sent) [0..]]
         (M.fromList (map (second M.fromList) hedMap))
         res
       toks = map tok . T.words
