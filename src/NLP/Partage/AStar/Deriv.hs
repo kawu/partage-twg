@@ -396,8 +396,8 @@ mkRoot hype p = only $
 -- mkFoot :: n -> DerivNode UnNorm n t
 -- mkFoot x = only . O.Foot $ x
 
-mkDNode :: n -> DerivNode UnNorm n t
-mkDNode x = only . O.DNode $ x
+mkNonTerm :: n -> DerivNode UnNorm n t
+mkNonTerm = only . O.NonTerm
 
 mkTerm :: Maybe t -> DerivNode UnNorm n t
 mkTerm = only . O.Term
@@ -407,8 +407,8 @@ mkTerm = only . O.Term
 -- footNode x = R.Node (mkFoot x) []
 
 -- | Build non-modified nodes of different types.
-dDaughterNode :: n -> Deriv UnNorm n t
-dDaughterNode x = R.Node (mkDNode x) []
+nonTermNode :: n -> Deriv UnNorm n t
+nonTermNode x = R.Node (mkNonTerm x) []
 
 termNode :: t -> Deriv UnNorm n t
 termNode x = R.Node (mkTerm $ Just x) []
@@ -426,6 +426,8 @@ derivRoot R.Node{..} = case node rootLabel of
   O.Term _ -> error "passiveDerivs.getRoot: got terminal"
 
 -- | Construct substitution node stemming from the given derivation.
+-- NOTE 02.04.2020: this most likely handles both substitution and
+-- pseudo-substitution.
 substNode
   :: A.Hype n t -> A.Passive n t
   -> Deriv UnNorm n (Tok t) -> Deriv UnNorm n (Tok t)
@@ -494,13 +496,26 @@ unAdjoinTree cmb = do
   return (ini, aux)
 
 -- | Add the modifier derivation (second argument) to the list of modifications
--- of the wrapping derivation (first argument).
+-- of the wrapping derivation (first argument).  Put differently, this function
+-- performs wrapping on the level of derivation trees.
 wrapTree :: Deriv c n t -> Deriv c n t -> Deriv c n t
 wrapTree wrp mod = R.Node
   { R.rootLabel = let root = R.rootLabel wrp in DerivNode
-    { node = node root
+    { node = markAsDNode $ node root
     , modif = mod : modif root }
   , R.subForest = R.subForest wrp }
+
+
+-- | Mark the node as a DNode.
+markAsDNode :: O.Node n t -> O.Node n t
+markAsDNode (O.NonTerm x) = O.DNode x
+markAsDNode _ = error "Only non-terminal can be marked as DNode"
+
+
+-- -- | Construct a derivation node with no modifier.
+-- only :: O.Node n (Maybe t) -> DerivNode UnNorm n t
+-- only x = DerivNode {node = x, modif =  []}
+
 
 -------------------------------
 -- Extracting Derivation Trees
@@ -925,7 +940,7 @@ fromActiveTravGenW minBy _p trav hype =
 --       return (footNode x : ts, w)
     A.PredictWrapping q x _ -> do
       (ts, w) <- activeDerivs q
-      return (dDaughterNode x : ts, w)
+      return (nonTermNode x : ts, w)
     A.Subst qp qa _ -> do
       (ts, w) <- activeDerivs qa
       (t, w') <- passiveDerivs qp

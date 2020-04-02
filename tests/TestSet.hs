@@ -21,7 +21,7 @@ module TestSet
 
 
 import           Control.Applicative       ((<$>), (<*>))
-import           Control.Arrow             (first)
+import           Control.Arrow             (first, second)
 import           Control.Monad             (forM, forM_, guard, void, forever)
 -- import           Control.Monad.Morph       as Morph
 import           Control.Monad.Trans.Class (lift)
@@ -1225,7 +1225,7 @@ gram16Tests =
 
 
 mkGram17 :: [(OTree, Weight)]
-mkGram17 = map ((,1) . uncurry parseTree)
+mkGram17 = map ((,1) . parseTree) $ zip [1..]
   [ ("we", "(NP (PRO <>))")
   , ("keep", "(CLAUSE (CORE (NP ) (NUC (NUC (V <>)) (NUC ))))")
   , ("wondering", "(SENTENCE (CLAUSE (NUC#WRAP# (V <>))) (CLAUSE ))")
@@ -1234,12 +1234,15 @@ mkGram17 = map ((,1) . uncurry parseTree)
   , ("gates", "(NP (CORE_N (NUC_N (N-PROP <>))))")
   , ("wanted", "(CLAUSE (CORE (CORE (NP ) (NUC (V <>))) (CORE )))")
   , ("to", "(CORE* (CLM <>))")
-  , ("say", "(CLAUSE (PrCS ) (CORE#WRAP# (CORE (NUC (V <>)))))")
+  , ("say", "(CLAUSE (PrCS ) (CORE#WRAP# (NUC (V <>))))")
   ]
   where
-    parseTree x
-      = fmap (O.mapTerm (\_ -> Just (Term x Nothing)))
-      . Br.parseTree'
+    parseTree (k, (trm, t))
+      = fmap (O.mapTerm (\_ -> Just (Term trm (Just k))))
+      $ Br.parseTree' t
+--     parseTree x
+--       = fmap (O.mapTerm (\_ -> Just (Term x Nothing)))
+--       . Br.parseTree'
 
 
 -- | The purpose of this test is to test the inversed root adjoin
@@ -1247,19 +1250,28 @@ mkGram17 = map ((,1) . uncurry parseTree)
 gram17Tests :: [Test]
 gram17Tests =
     [ test "SENTENCE" ("we keep wondering what mr. gates wanted to say") Yes
-    , test "SENTENCE" ("we keep wondering what mr. gates wanted to say")
-      . Trees . S.fromList $
-        [ "(SENTENCE (CLAUSE (CORE (NP (PRO we)) (NUC (NUC (V keep)) (NUC (V wondering))))) (CLAUSE (PrCS (NP-WH (PRO-WH what))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.) (N-PROP gates)))) (NUC (V wanted)) (CLM to)) (CORE (CORE (NUC (V say)))))))"
-        , "(SENTENCE (CLAUSE (CORE (NP (PRO we)) (NUC (NUC (V keep)) (NUC (V wondering))))) (CLAUSE (PrCS (NP-WH (PRO-WH what))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.) (N-PROP gates)))) (NUC (V wanted))) (CLM to) (CORE (CORE (NUC (V say)))))))"
-        ,"(SENTENCE (CLAUSE (CORE (NP (PRO we)) (NUC (NUC (V keep)) (NUC (V wondering))))) (CLAUSE (PrCS (NP-WH (PRO-WH what))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.) (N-PROP gates)))) (NUC (V wanted))) (CORE (CLM to) (CORE (NUC (V say)))))))"
-        ,"(SENTENCE (CLAUSE (CORE (NP (PRO we)) (NUC (NUC (V keep)) (NUC (V wondering))))) (CLAUSE (PrCS (NP-WH (PRO-WH what))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.) (N-PROP gates)))) (NUC (V wanted))) (CORE (CORE (CLM to) (NUC (V say)))))))"
-        ]
+    , testDep "SENTENCE" ("we keep wondering what mr. gates wanted to say")
+        [ (1, [(2, 0)])
+        , (2, [(3, 0)])
+        , (3, [(0, 0)])
+        , (4, [(9, 0)])
+        , (5, [(6, 0)])
+        , (6, [(7, 0)])
+        , (7, [(9, 0)])
+        , (8, [(9, 0)])
+        , (9, [(3, 0)])
+        ] . Trees . S.fromList $
+          ["(SENTENCE (CLAUSE (CORE (NP (PRO we:1)) (NUC (NUC (V keep:2)) (NUC (V wondering:3))))) (CLAUSE (PrCS (NP-WH (PRO-WH what:4))) (CORE (CORE (NP (CORE_N (NUC_N (N-PROP mr.:5) (N-PROP gates:6)))) (NUC (V wanted:7))) (CORE (CLM to:8) (NUC (V say:9))))))"]
     ]
     where
-      test start sent res = Test start (toks sent) M.empty res
+      test start sent res = testDep start sent [] res
+      testDep start sent hedMap res = Test
+        start
+        [tok x k | (x, k) <- zip (T.words sent) [1..]] 
+        (M.fromList (map (second M.fromList) hedMap))
+        res
       toks = map tok . T.words
-      tok t = Term t Nothing
-      mkLeaf = Leaf . Just . tok
+      tok t k = Term t (Just k)
 
 
 ---------------------------------------------------------------------
