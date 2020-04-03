@@ -2,7 +2,7 @@ Partage for TWG
 ===============
 
 **Partage for TWG** is a Haskell library and tool dedicated to parsing *tree
-wrapping grammars* (TWGs).
+wrapping grammars* (TWGs) using the A\* algorithm [3,4,5].
 
 <!---
 It implements two kinds of parsers -\- an Earley-style, bottom-up parser [1]
@@ -140,7 +140,6 @@ To mark a d-daughter node, use `#WRAP#`, as in the following example:
 7       wanted  9:1     (CLAUSE (CORE (CORE (NP ) (NUC (V <>))) (CORE ))):1
 8       to      9:1     (CORE* (CLM <>)):1
 9       say     3:1     (CLAUSE (PrCS ) (CORE#WRAP# (NUC (V <>)))):1
-
 ```
 
 #### Empty terminals
