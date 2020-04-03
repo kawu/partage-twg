@@ -1,18 +1,18 @@
 name:               partage
-version:            1.0.0.0
-synopsis:           A* TAG parsing
+version:            2.0.0.0
+synopsis:           A* TWG parsing
 description:
-    The library implements an A* parser for tree adjoining grammars (TAGs).
+    The library implements an A* parser for tree wrapping grammars (TWGs).
     .
 license:            BSD3
 license-file:       LICENSE
 cabal-version:      >= 1.10
-copyright:          Copyright (c) 2015-2019 Jakub Waszczuk
+copyright:          Copyright (c) 2015-2020 Jakub Waszczuk
 author:             Jakub Waszczuk
 maintainer:         waszczuk.kuba@gmail.com
 stability:          experimental
 category:           Natural Language Processing
-homepage:           https://github.com/kawu/partage
+homepage:           https://github.com/kawu/partage-twg
 build-type:         Simple
 
 
@@ -111,7 +111,7 @@ library
 
 source-repository head
     type: git
-    location: https://github.com/kawu/partage.git
+    location: https://github.com/kawu/partage-twg.git
 
 
 test-suite test
@@ -154,7 +154,7 @@ test-suite test
 --     main-is: test-partage.hs
 --     ghc-options: -Wall -O2 -threaded -rtsopts
 
-executable partage
+executable partage-twg
     default-language:
         Haskell2010
     build-depends:
@@ -170,5 +170,5 @@ executable partage
       , data-memocombinators    >= 0.5      && < 0.6
       , vector                  >= 0.10     && < 0.13
     hs-source-dirs: tools
-    main-is: partage.hs
+    main-is: partage-twg.hs
     ghc-options: -Wall -O2 -threaded -rtsopts

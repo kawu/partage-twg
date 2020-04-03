@@ -2,7 +2,9 @@ Partage for TWG
 ===============
 
 **Partage for TWG** is a Haskell library and tool dedicated to parsing *tree
-wrapping grammars* (TWGs) using the A\* algorithm [3,4,5].
+wrapping grammars* (TWGs) using the A\* algorithm [3,4,5].  This version is a
+fork of [Partage for TAGs](https://github.com/kawu/partage) and it's currently
+under development.
 
 <!---
 It implements two kinds of parsers -\- an Earley-style, bottom-up parser [1]

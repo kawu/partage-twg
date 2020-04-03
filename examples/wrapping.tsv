@@ -1,0 +1,10 @@
+1	we	2:1	(NP (PRO <>)):1
+2	keep	3:1	(CLAUSE (CORE (NP ) (NUC (NUC (V <>)) (NUC )))):1
+3	wondering	0:1	(SENTENCE (CLAUSE (NUC#WRAP# (V <>)) (CLAUSE ))):1
+4	what	9:1	(PrCS (NP-WH (PRO-WH <>))):1
+5	mr.	6:1	(NUC_N* (N-PROP <>)):1
+6	gates	7:1	(NP (CORE_N (NUC_N (N-PROP <>)))):1
+7	wanted	9:1	(CLAUSE (CORE (CORE (NP ) (NUC (V <>))) (CORE ))):1
+8	to	9:1	(CORE* (CLM <>)):1
+9	say	3:1	(CLAUSE (PrCS ) (CORE#WRAP# (NUC (V <>)))):1
+
