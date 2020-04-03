@@ -8,7 +8,9 @@ It implements two kinds of parsers -- an Earley-style, bottom-up parser [1]
 with special focus on structure (and, hence, computation) sharing [2], and an
 A\* parser [3,4,5].
     
+<!---
 [![Build Status](https://travis-ci.org/kawu/partage.svg?branch=master)](https://travis-ci.org/kawu/partage)
+-->
 
 #### Earley-style parser
 
@@ -54,7 +56,7 @@ Installation
 First you will need to download and install the [Haskell Tool Stack][stack].
 Then run the following commands:
 
-    git clone https://github.com/kawu/partage.git
+    git clone https://github.com/kawu/partage-twg.git
     cd partage
     stack install
 
