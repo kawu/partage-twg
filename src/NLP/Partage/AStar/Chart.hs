@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 
 -- | A representation of the parsing chart -- the closed set of the
@@ -45,9 +46,10 @@ where
 
 
 import           Control.Monad               ((>=>), guard)
+import           Data.List                   (foldl')
 import           Data.Lens.Light
 import qualified Data.Map.Strict             as M
-import           Data.Maybe                  (fromJust, maybeToList)
+import           Data.Maybe                  (fromJust, maybeToList, mapMaybe)
 import qualified Data.Set                    as S
 
 import           Control.Monad.Trans.Class   (lift)
@@ -64,6 +66,7 @@ import           NLP.Partage.SOrd
 import           NLP.Partage.DAG             (Weight)
 import qualified NLP.Partage.DAG             as DAG
 import qualified NLP.Partage.Tree.Other      as O
+import qualified NLP.Partage.Auto as A
 
 import           NLP.Partage.AStar.Auto      (Auto (..), NotFoot(..))
 import           NLP.Partage.AStar.Base
@@ -71,21 +74,73 @@ import           NLP.Partage.AStar.ExtWeight
 import           NLP.Partage.AStar.Item
 
 
+--------------------------------------------------
+-- Index
+--------------------------------------------------
+
+
+data Index a ix = Index
+  { getIndex :: a -> [ix]
+    -- ^ Retrieve the index(es) of the given object
+  , indexMap :: M.Map ix (S.Set a)
+    -- ^ Map from indexes to objects
+  }
+
+
+-- | Make the index for the given indexing function.
+mkIndex :: (a -> ix) -> Index a ix
+mkIndex f = mkIndex' ((:[]) . f)
+
+
+-- | Make the index for the given indexing function.
+mkIndex' :: (a -> [ix]) -> Index a ix
+mkIndex' f = Index f M.empty
+
+
+-- | Update the index with the given object.
+updateWith :: (Ord ix, Ord a) => a -> Index a ix -> Index a ix
+updateWith x idx =
+  idx {indexMap = newMap}
+  where
+    newMap = foldl' update (indexMap idx) (getIndex idx x)
+    update idxMap ix =
+      M.insertWith S.union ix (S.singleton x) idxMap
+
+
+-- | Retrieve all the objects with the given index.
+retrieve :: (Ord ix) => ix -> Index a ix -> [a]
+retrieve ix Index{..} = do
+  xSet <- maybeToList $ M.lookup ix indexMap
+  x <- S.toList xSet
+  return x
+
+
+--------------------------------------------------
+-- Chart
+--------------------------------------------------
+
+
 -- | A hypergraph dynamically constructed during parsing.
 data Chart n t = Chart
-    { doneActive  :: M.Map (Active n) (ExtWeight n t)
+    { _doneActive  :: M.Map (Active n) (ExtWeight n t)
     -- ^ Processed active items.
 
-    , donePassive :: M.Map (Passive n t) (ExtWeight n t)
+    , _donePassive :: M.Map (Passive n t) (ExtWeight n t)
     -- ^ Processed passive items.
+
+    -- , _expectEndIndex :: M.Map (DAG.DID, Pos) (Active n)
+    , _expectEndIndex :: Index (Active n) (DAG.DID, Pos)
+    -- ^ Index for `expectEnd`
     }
+$( makeLenses [''Chart] )
 
 
 -- | Create an empty chart.
-empty :: Chart n t
-empty = Chart
-  { doneActive = M.empty
-  , donePassive = M.empty
+empty :: Auto n t -> Chart n t
+empty auto = Chart
+  { _doneActive = M.empty
+  , _donePassive = M.empty
+  , _expectEndIndex = mkIndex' (expectEndIx auto)
   }
 
 
@@ -98,13 +153,13 @@ empty = Chart
 -- | List all passive done items together with the corresponding
 -- traversals.
 listPassive :: Chart n t -> [(Passive n t, ExtWeight n t)]
-listPassive = M.toList . donePassive
+listPassive = M.toList . _donePassive
 
 
 -- | List all active done items together with the corresponding
 -- traversals.
 listActive :: Chart n t -> [(Active n, ExtWeight n t)]
-listActive = M.toList . doneActive
+listActive = M.toList . _doneActive
 
 
 -- | Number of chart nodes.
@@ -131,7 +186,7 @@ activeTrav
     :: (Ord n, Ord t)
     => Active n -> Chart n t
     -> Maybe (ExtWeight n t)
-activeTrav p = M.lookup p . doneActive
+activeTrav p = M.lookup p . _doneActive
 
 
 -- | Check if the active item is not already processed.
@@ -151,12 +206,9 @@ saveActive
     -> ExtWeight n t
     -> Chart n t
     -> Chart n t
-saveActive lhsMap p ts chart =
-  chart
-  { doneActive = newDone
-  }
-  where
-    newDone = M.insertWith joinExtWeight' p ts (doneActive chart)
+saveActive lhsMap p ts
+  = modL' doneActive (M.insertWith joinExtWeight' p ts)
+  . modL' expectEndIndex (updateWith p)
 
 
 -- | Check if, for the given active item, the given transitions are already
@@ -185,7 +237,7 @@ passiveTrav
     -> Auto n t
     -> Chart n t
     -> Maybe (ExtWeight n t)
-passiveTrav p _ = M.lookup p . donePassive
+passiveTrav p _ = M.lookup p . _donePassive
 
 
 -- | Check if the state is not already processed.
@@ -205,12 +257,8 @@ savePassive
   -> Auto n t
   -> Chart n t
   -> Chart n t
-savePassive p ts _auto chart =
-  chart
-  { donePassive = newDone
-  }
-  where
-    newDone = M.insertWith joinExtWeight' p ts (donePassive chart)
+savePassive p ts _auto =
+  modL' donePassive $ M.insertWith joinExtWeight' p ts
 
 
 -- | Check if, for the given active item, the given transitions are already
@@ -270,7 +318,7 @@ finalFrom
     -> Chart n t    -- ^ Result of the earley computation
     -> [Passive n t]
 finalFrom startSet n auto Chart{..} = do
-  (p, _) <- M.toList donePassive
+  (p, _) <- M.toList _donePassive
   guard $ isFinal startSet n auto p
   return p
 --   guard $ DAG.isRoot (p ^. dagID) dag
@@ -282,6 +330,34 @@ finalFrom startSet n auto Chart{..} = do
 --   where
 --     dag = gramDAG auto
 --     getLabel did = labNonTerm =<< DAG.label did dag
+
+
+-- -- | Return all active processed items which:
+-- -- * expect the given DAG node,
+-- -- * end on the given position.
+-- -- Return the weights (`priWeight`s) of reaching them as well.
+-- expectEnd
+--     :: (HOrd n, HOrd t, MS.MonadState s m)
+--     => (s -> Auto n t)
+--     -> (s -> Chart n t)
+--     -> DAG.DID
+--     -> Pos
+--     -> P.ListT m (Active n, DuoWeight)
+-- expectEnd getAuto getChart did i = do
+--   compState <- lift MS.get
+--   let Chart{..} = getChart compState
+--       automat = getAuto compState
+--   -- loop over all active items
+--   (p, e) <- each $ M.toList _doneActive
+--   -- verify the item ends where it should
+--   guard $ p ^. spanA ^. end == i
+--   -- determine automaton states from which the given label
+--   -- leaves as a body transition
+--   stateSet <- some $ M.lookup did (withBody automat)
+--   -- verify the state of the active item
+--   guard $ p ^. state `S.member` stateSet
+--   -- return the item
+--   return (p, duoWeight e)
 
 
 -- | Return all active processed items which:
@@ -297,19 +373,23 @@ expectEnd
     -> P.ListT m (Active n, DuoWeight)
 expectEnd getAuto getChart did i = do
   compState <- lift MS.get
-  let Chart{..} = getChart compState
-      automat = getAuto compState
-  -- loop over all active items
-  (p, e) <- each $ M.toList doneActive
-  -- verify the item ends where it should
-  guard $ p ^. spanA ^. end == i
-  -- determine automaton states from which the given label
-  -- leaves as a body transition
-  stateSet <- some $ M.lookup did (withBody automat)
-  -- verify the state of the active item
-  guard $ p ^. state `S.member` stateSet
-  -- return the item
-  return (p, duoWeight e)
+  let chart = getChart compState
+  q <- each $ retrieve (did, i) (chart ^. expectEndIndex)
+  e <- some $ M.lookup q (chart ^. doneActive)
+  return (q, duoWeight e)
+
+
+-- | Indexing function for `expectEnd`
+expectEndIx :: Auto n t -> Active n -> [(DAG.DID, Pos)]
+expectEndIx automat q = do
+  let pos = q ^. spanA ^. end
+      sid = q ^. state
+      auto = gramAuto automat
+      bodyDID (x, w, j) = case x of
+          A.Body y -> Just y
+          A.Head _ -> Nothing
+  did <- mapMaybe bodyDID $ A.edgesWei auto sid
+  return (did, pos)
 
 
 -- | Return all passive items with:
@@ -328,7 +408,7 @@ rootSpan getAuto getChart x (i, j) = do
       auto = getAuto compState
       dag = gramDAG auto
   -- loop over all passive items
-  (p, e) <- each $ M.toList donePassive
+  (p, e) <- each $ M.toList _donePassive
   -- check the necessary constraints
   guard $ p ^. spanP ^. beg == i
   guard $ p ^. spanP ^. end == j
@@ -342,11 +422,11 @@ rootSpan getAuto getChart x (i, j) = do
 -- rootSpan getChart x (i, j) = do
 --   Chart{..} <- getChart <$> lift MS.get
 --   P.Select $ do
---     P.each $ case M.lookup i donePassiveIni >>= M.lookup x >>= M.lookup j of
+--     P.each $ case M.lookup i _donePassiveIni >>= M.lookup x >>= M.lookup j of
 --       Nothing -> []
 --       Just m -> map (Arr.second duoWeight) (M.toList m)
 --                  -- ((M.elems >=> M.toList) m)
---     P.each $ case M.lookup i donePassiveAuxNoTop >>= M.lookup x >>= M.lookup j of
+--     P.each $ case M.lookup i _donePassiveAuxNoTop >>= M.lookup x >>= M.lookup j of
 --       Nothing -> []
 --       Just m -> map (Arr.second duoWeight) (M.toList m)
 
@@ -367,7 +447,7 @@ rootEnd getAuto getChart lhsNT i = do
       auto = getAuto compState
       -- dag = gramDAG auto
   -- loop over each active item
-  (q, e) <- each $ M.toList doneActive
+  (q, e) <- each $ M.toList _doneActive
   -- determine the LHS non-terminal
   let lhs = lhsNonTerm auto M.! (q ^. state)
   -- check the necessary constraints
@@ -412,7 +492,7 @@ provideBeg _getAuto getChart x i = do
   compState <- lift MS.get
   let Chart{..} = getChart compState
   -- loop over each passive item
-  (p, e) <- each $ M.toList donePassive
+  (p, e) <- each $ M.toList _donePassive
   -- check the necessary constraints
   guard $ p ^. dagID == x
   guard $ p ^. spanP ^. beg == i
@@ -473,7 +553,7 @@ provideBegIni getAuto getChart x i = do
       auto = getAuto compState
       dag = gramDAG auto
   -- loop over each passive item
-  (p, e) <- each $ M.toList donePassive
+  (p, e) <- each $ M.toList _donePassive
   -- check the necessary constraints
   guard $ nonTerm (p ^. dagID) auto == x
   guard $ p ^. spanP ^. beg == i
@@ -562,7 +642,7 @@ provideBegIni' getAuto getChart x i = do
           Left nt -> label qDID == nt
           Right did -> qDID == did
   -- loop over each passive item
-  (q, e) <- each $ M.toList donePassive
+  (q, e) <- each $ M.toList _donePassive
   -- check the necessary constraints
   guard . checkNonTerm $ q ^. dagID
   guard $ q ^. spanP ^. beg == i
@@ -583,7 +663,7 @@ withGap getAuto getChart gap = do
   compState <- lift MS.get
   let Chart{..} = getChart compState
   -- loop over each passive item
-  (p, e) <- each $ M.toList donePassive
+  (p, e) <- each $ M.toList _donePassive
   -- check the necessary constraints
   guard $ gap `S.member` (p ^. spanP ^. gaps)
   -- return the item
