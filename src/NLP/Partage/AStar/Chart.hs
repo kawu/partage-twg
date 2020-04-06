@@ -139,6 +139,9 @@ data Chart n t = Chart
 
     , _rootSpanIndex :: Index (Passive n t) (n, Pos, Pos)
     -- ^ Index for `rootSpan`
+
+    , _provideBegIniIndex :: Index (Passive n t) (n, Pos)
+    -- ^ Index for `provideBegIni`
     }
 $( makeLenses [''Chart] )
 
@@ -152,6 +155,7 @@ empty auto = Chart
   , _rootEndIndex = mkIndex (rootEndIx auto)
   , _provideBegIndex = mkIndex provideBegIx
   , _rootSpanIndex = mkIndex (rootSpanIx auto)
+  , _provideBegIniIndex = mkIndex (provideBegIniIx auto)
   }
 
 
@@ -273,6 +277,7 @@ savePassive p ts _auto
   = modL' donePassive (M.insertWith joinExtWeight' p ts)
   . modL' provideBegIndex (updateWith p)
   . modL' rootSpanIndex (updateWith p)
+  . modL' provideBegIniIndex (updateWith p)
 
 
 -- | Check if, for the given active item, the given transitions are already
@@ -438,7 +443,7 @@ rootSpan getAuto getChart x (i, j) = do
 --   return (p, duoWeight e)
 
 
--- | Indexing function for `rootEnd`
+-- | Indexing function for `rootSpan`
 rootSpanIx :: Auto n t -> Passive n t -> (n, Pos, Pos)
 rootSpanIx auto p =
   ( nonTerm (p ^. dagID) auto
@@ -546,8 +551,6 @@ provideBeg' getChart x i = undefined
 -- | Return all passive items which:
 -- * provide a given label,
 -- * begin on the given position.
---
--- TODO: Should be better optimized.
 provideBegIni
     :: (Ord n, Ord t, MS.MonadState s m)
     => (s -> Auto n t)
@@ -557,56 +560,28 @@ provideBegIni
     -> P.ListT m (Passive n t, DuoWeight)
 provideBegIni getAuto getChart x i = do
   compState <- lift MS.get
-  let Chart{..} = getChart compState
-      auto = getAuto compState
-      dag = gramDAG auto
-  -- loop over each passive item
-  (p, e) <- each $ M.toList _donePassive
-  -- check the necessary constraints
-  guard $ nonTerm (p ^. dagID) auto == x
-  guard $ p ^. spanP ^. beg == i
-  -- return the item
-  return (p, duoWeight e)
-
-
--- -- | Return all initial passive items which:
--- -- * provide a given label,
--- -- * begin on the given position.
--- --
--- -- TODO: Should be better optimized.
--- provideBegIni
---     :: (Ord n, Ord t, MS.MonadState s m)
---     => (s -> Auto n t)
---     -> (s -> Chart n t)
---     -- -> Either (NotFoot n) DAG.DID
---     -> Either n DAG.DID
---     -- -> DAG.DID
---     -> Pos
---     -> P.ListT m (Passive n t, DuoWeight)
--- provideBegIni getAuto getChart x i = do
---   compState <- lift MS.get
+  let chart = getChart compState
+  q <- each $ retrieve (x, i) (chart ^. provideBegIniIndex)
+  e <- some $ M.lookup q (chart ^. donePassive)
+  return (q, duoWeight e)
 --   let Chart{..} = getChart compState
 --       auto = getAuto compState
 --       dag = gramDAG auto
---       n = 
---         case x of
---           Left nt -> nt
---           Right did -> nonTerm did auto
---       checkNonTerm qDID =
---         case x of
---           Left nt -> nonTerm qDID auto == nt
---           Right did -> qDID == did
---   each $
---     maybeToList ((M.lookup i >=> M.lookup n) donePassiveIni) >>=
---     M.elems >>=
---     -- maybeToList . M.lookup x >>=
---       ( \m -> do
---           p <-
---             [ (q, duoWeight e)
---             | (q, e) <- M.toList m
---             -- , q ^. dagID == x ]
---             , checkNonTerm $ q ^. dagID ]
---           return p )
+--   -- loop over each passive item
+--   (p, e) <- each $ M.toList _donePassive
+--   -- check the necessary constraints
+--   guard $ nonTerm (p ^. dagID) auto == x
+--   guard $ p ^. spanP ^. beg == i
+--   -- return the item
+--   return (p, duoWeight e)
+
+
+-- | Indexing function for `provideBegIni`
+provideBegIniIx :: Auto n t -> Passive n t -> (n, Pos)
+provideBegIniIx auto p =
+  ( nonTerm (p ^. dagID) auto
+  , p ^. spanP ^. beg
+  )
 
 
 -- | Return all initial passive items which:
