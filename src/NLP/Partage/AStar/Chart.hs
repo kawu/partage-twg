@@ -145,6 +145,9 @@ data Chart n t = Chart
 
     , _provideBegIni'Index :: Index (Passive n t) (NotFoot n, Pos)
     -- ^ Index for `provideBegIni'`
+
+    , _withGapIndex :: Index (Passive n t) (Pos, Pos, n)
+    -- ^ Index for `withGap`
     }
 $( makeLenses [''Chart] )
 
@@ -160,6 +163,7 @@ empty auto = Chart
   , _rootSpanIndex = mkIndex (rootSpanIx auto)
   , _provideBegIniIndex = mkIndex (provideBegIniIx auto)
   , _provideBegIni'Index = mkIndex (provideBegIni'Ix auto)
+  , _withGapIndex = mkIndex' withGapIx
   }
 
 
@@ -283,6 +287,7 @@ savePassive p ts _auto
   . modL' rootSpanIndex (updateWith p)
   . modL' provideBegIniIndex (updateWith p)
   . modL' provideBegIni'Index (updateWith p)
+  . modL' withGapIndex (updateWith p)
 
 
 -- | Check if, for the given active item, the given transitions are already
@@ -668,13 +673,22 @@ withGap
     -> P.ListT m (Passive n t, DuoWeight)
 withGap getAuto getChart gap = do
   compState <- lift MS.get
-  let Chart{..} = getChart compState
-  -- loop over each passive item
-  (p, e) <- each $ M.toList _donePassive
-  -- check the necessary constraints
-  guard $ gap `S.member` (p ^. spanP ^. gaps)
-  -- return the item
-  return (p, duoWeight e)
+  let chart = getChart compState
+  q <- each $ retrieve gap (chart ^. withGapIndex)
+  e <- some $ M.lookup q (chart ^. donePassive)
+  return (q, duoWeight e)
+--   let Chart{..} = getChart compState
+--   -- loop over each passive item
+--   (p, e) <- each $ M.toList _donePassive
+--   -- check the necessary constraints
+--   guard $ gap `S.member` (p ^. spanP ^. gaps)
+--   -- return the item
+--   return (p, duoWeight e)
+
+
+-- | Indexing function for `provideBegIni'`
+withGapIx :: Passive n t -> [(Pos, Pos, n)]
+withGapIx p = S.toList $ p ^. spanP ^. gaps
 
 
 -- | Return all auxiliary passive items which:
