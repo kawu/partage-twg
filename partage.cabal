@@ -90,7 +90,7 @@ library
     cpp-options: -DNewHeuristic
 
     -- Check realtime if the monotonicity property is preserved
-    cpp-options: -DCheckMonotonic
+    -- cpp-options: -DCheckMonotonic
 
     -- Grammar compression
     cpp-options: -DCompression
@@ -106,7 +106,7 @@ library
     -- the implementation slighly inconsistent with the formal description of
     -- the inference rules.  Note also that, currently, with this option turned
     -- on, monotonicity tests fail with the CheckMonotonic flag.
-    -- cpp-options: -DHandleDummyArcWeight
+    cpp-options: -DHandleDummyArcWeight
 
 
 source-repository head
