@@ -136,6 +136,9 @@ data Chart n t = Chart
 
     , _provideBegIndex :: Index (Passive n t) (DAG.DID, Pos)
     -- ^ Index for `provideBeg`
+
+    , _rootSpanIndex :: Index (Passive n t) (n, Pos, Pos)
+    -- ^ Index for `rootSpan`
     }
 $( makeLenses [''Chart] )
 
@@ -148,6 +151,7 @@ empty auto = Chart
   , _expectEndIndex = mkIndex' (expectEndIx auto)
   , _rootEndIndex = mkIndex (rootEndIx auto)
   , _provideBegIndex = mkIndex provideBegIx
+  , _rootSpanIndex = mkIndex (rootSpanIx auto)
   }
 
 
@@ -268,6 +272,7 @@ savePassive
 savePassive p ts _auto
   = modL' donePassive (M.insertWith joinExtWeight' p ts)
   . modL' provideBegIndex (updateWith p)
+  . modL' rootSpanIndex (updateWith p)
 
 
 -- | Check if, for the given active item, the given transitions are already
@@ -413,31 +418,33 @@ rootSpan
     -> P.ListT m (Passive n t, DuoWeight)
 rootSpan getAuto getChart x (i, j) = do
   compState <- lift MS.get
-  let Chart{..} = getChart compState
-      auto = getAuto compState
-      dag = gramDAG auto
-  -- loop over all passive items
-  (p, e) <- each $ M.toList _donePassive
-  -- check the necessary constraints
-  guard $ p ^. spanP ^. beg == i
-  guard $ p ^. spanP ^. end == j
-  -- NOTE: verifying `DAG.isRoot` would make this work incorrectly w.r.t. how
-  -- the function is used in the AStar module.
-  -- guard $ DAG.isRoot (p ^. dagID) dag
-  guard $ nonTerm (p ^. dagID) auto == x
-  -- return the item
-  return (p, duoWeight e)
+  let chart = getChart compState
+  q <- each $ retrieve (x, i, j) (chart ^. rootSpanIndex)
+  e <- some $ M.lookup q (chart ^. donePassive)
+  return (q, duoWeight e)
+--   let Chart{..} = getChart compState
+--       auto = getAuto compState
+--       dag = gramDAG auto
+--   -- loop over all passive items
+--   (p, e) <- each $ M.toList _donePassive
+--   -- check the necessary constraints
+--   guard $ p ^. spanP ^. beg == i
+--   guard $ p ^. spanP ^. end == j
+--   -- NOTE: verifying `DAG.isRoot` would make this work incorrectly w.r.t. how
+--   -- the function is used in the AStar module.
+--   -- guard $ DAG.isRoot (p ^. dagID) dag
+--   guard $ nonTerm (p ^. dagID) auto == x
+--   -- return the item
+--   return (p, duoWeight e)
 
--- rootSpan getChart x (i, j) = do
---   Chart{..} <- getChart <$> lift MS.get
---   P.Select $ do
---     P.each $ case M.lookup i _donePassiveIni >>= M.lookup x >>= M.lookup j of
---       Nothing -> []
---       Just m -> map (Arr.second duoWeight) (M.toList m)
---                  -- ((M.elems >=> M.toList) m)
---     P.each $ case M.lookup i _donePassiveAuxNoTop >>= M.lookup x >>= M.lookup j of
---       Nothing -> []
---       Just m -> map (Arr.second duoWeight) (M.toList m)
+
+-- | Indexing function for `rootEnd`
+rootSpanIx :: Auto n t -> Passive n t -> (n, Pos, Pos)
+rootSpanIx auto p =
+  ( nonTerm (p ^. dagID) auto
+  , p ^. spanP ^. beg
+  , p ^. spanP ^. end
+  )
 
 
 -- | Return all active processed items which:
