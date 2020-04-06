@@ -41,9 +41,9 @@ import           Test.Tasty.HUnit          (testCase)
 
 import qualified Pipes                     as P
 
--- import           NLP.Partage.AStar         (Tok)
+import           NLP.Partage.AStar         (Tok)
 -- import qualified NLP.Partage.AStar         as AStar
--- import qualified NLP.Partage.AStar.Deriv   as Deriv
+import qualified NLP.Partage.AStar.Deriv   as Deriv
 import           NLP.Partage.DAG           (Weight)
 import           NLP.Partage.Tree          (Tree (..))
 import qualified NLP.Partage.Tree.Other    as O
@@ -60,7 +60,7 @@ import qualified NLP.Partage.Format.Brackets as Br
 type Tr    = Tree T.Text (Maybe Term)
 type OTree = O.Tree T.Text (Maybe Term)
 -- type Hype  = AStar.Hype T.Text Term
--- type Deriv = Deriv.Deriv Deriv.UnNorm T.Text (Tok Term)
+type Deriv = Deriv.Deriv Deriv.UnNorm T.Text (Tok Term)
 -- type ModifDerivs = Deriv.ModifDerivs Deriv.UnNorm T.Text Term
 
 
@@ -1320,20 +1320,20 @@ type ParsedP
   -> IO (S.Set Tr)
 
 
--- -- | Derivation trees
--- type DerivP
---   = [(OTree, Weight)]
---     -- ^ Weighted grammar
---   -> T.Text
---     -- ^ Start symbol
---   -> [Term]
---     -- ^ Sentence to parse
---   -> M.Map Int (M.Map Int Weight)
---     -- ^ Head map
---   -> IO [Deriv]
--- -- type DerivP = [(Other, Weight)] -> T.Text -> [T.Text] -> IO [Deriv]
--- 
--- 
+-- | Derivation trees
+type DerivP
+  = [(OTree, Weight)]
+    -- ^ Weighted grammar
+  -> T.Text
+    -- ^ Start symbol
+  -> [Term]
+    -- ^ Sentence to parse
+  -> M.Map Int (M.Map Int Weight)
+    -- ^ Head map
+  -> IO [Deriv]
+-- type DerivP = [(Other, Weight)] -> T.Text -> [T.Text] -> IO [Deriv]
+
+
 -- -- | Derivation pipe
 -- type DerivPipeP
 --   = [(OTree, Weight)]
@@ -1354,11 +1354,11 @@ data TagParser = TagParser
     -- ^ Recognition function
   , parsedTrees :: Maybe ParsedP
     -- ^ Function which retrieves derived trees
---   , derivTrees :: Maybe DerivP
---     -- ^ Function which retrieves derivation trees; the result is a set of
---     -- derivations but it takes the form of a list so that derivations can be
---     -- generated gradually; the property that the result is actually a set
---     -- should be verified separately.
+  , derivTrees :: Maybe DerivP
+    -- ^ Function which retrieves derivation trees; the result is a set of
+    -- derivations but it takes the form of a list so that derivations can be
+    -- generated gradually; the property that the result is actually a set
+    -- should be verified separately.
 --   , encodes :: Maybe EncodeP
 --     -- ^ Function which checks whether the given derivation is encoded in
 --     -- the given hypergraph
@@ -1371,7 +1371,7 @@ data TagParser = TagParser
 
 -- | Dummy parser which doesn't provide anything.
 dummyParser :: TagParser
-dummyParser = TagParser Nothing Nothing -- Nothing Nothing Nothing
+dummyParser = TagParser Nothing Nothing Nothing -- Nothing Nothing
   True
 
 
@@ -1401,7 +1401,7 @@ testTree modName TagParser{..} = testGroup modName $ do
          then testCase (show test) $ do
            testRecognition gram test
            testParsing gram test
---            testDerivsIsSet gram test
+           testDerivsIsSet gram test
 --            testFlyingDerivsIsSet gram test
 --            testDerivsEqual gram test
 --            testWeightsAscend gram test
@@ -1421,15 +1421,15 @@ testTree modName TagParser{..} = testGroup modName $ do
           ts' @?= ts
         _ -> return ()
 
---     -- Here we only check if the list of derivations is actually a set
---     testDerivsIsSet gram Test{..} = case derivTrees of
---         Just derivs -> do
---           ds <- derivs gram startSym testSent headMap
---           -- putStrLn ""
---           -- forM_ ds $ putStrLn . R.drawTree . fmap show . Deriv.deriv4show
---           length ds @?= length (nub ds)
---         _ -> return ()
--- 
+    -- Here we only check if the list of derivations is actually a set
+    testDerivsIsSet gram Test{..} = case derivTrees of
+        Just derivs -> do
+          ds <- derivs gram startSym testSent headMap
+          -- putStrLn ""
+          -- forM_ ds $ putStrLn . R.drawTree . fmap show . Deriv.deriv4show
+          length ds @?= length (nub ds)
+        _ -> return ()
+
 --     -- Like `testDerivsIsSet` but for on-the-fly generated derivations
 --     testFlyingDerivsIsSet gram Test{..} = case derivPipe of
 --         Just mkPipe -> do

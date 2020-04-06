@@ -603,6 +603,9 @@ fromActiveTrav _p trav hype = case trav of
 --   A.Foot q x _ ->
 --     [ footNode x : ts
 --     | ts <- activeDerivs q ]
+  A.PredictWrapping q x _ ->
+    [ nonTermNode x : ts
+    | ts <- activeDerivs q ]
   A.Subst qp qa _ ->
     [ substNode hype qp t : ts
     | ts <- activeDerivs qa

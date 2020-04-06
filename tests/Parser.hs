@@ -22,7 +22,7 @@ import           Data.Maybe              (maybeToList)
 import qualified Pipes                   as P
 
 import qualified NLP.Partage.AStar       as A
--- import qualified NLP.Partage.AStar.Deriv as D
+import qualified NLP.Partage.AStar.Deriv as D
 import qualified NLP.Partage.DAG         as DAG
 import qualified NLP.Partage.Earley      as E
 import qualified NLP.Partage.Tree.Other  as O
@@ -60,12 +60,16 @@ testAStar =
     parser = T.dummyParser
       { T.recognize = Just recFrom
       , T.parsedTrees = Just parseFrom
+      , T.derivTrees = Just derivFrom
+      -- , T.derivPipe  = Just derivPipe
       , T.dependencySupport = True 
       }
+
     recFrom gram start input headMap
       = A.recognizeFrom memoTerm gram (S.singleton start) (posMap input) headMap
       . A.fromList
       $ input
+
     parseFrom gram start sent headMap = do
       let dag = DAG.mkGram gram
           input = A.fromList sent
@@ -77,6 +81,20 @@ testAStar =
         -- do the corresponding encoding/decoding
         . map (O.mkTree . fmap (O.mapTerm $ fmap A.terminal) . O.unTree)
         $ A.parsedTrees hype (S.singleton start) (length sent)
+
+    derivFrom gram start sent headMap = do
+      let dag = DAG.mkGram gram
+          input = A.fromList sent
+          auto = A.mkAuto memoTerm dag input (posMap sent) headMap
+      hype <- A.earleyAuto auto input
+      return $ D.derivTrees hype (S.singleton start) (length sent)
+
+--     derivPipe gram start sent headMap =
+--       let dag = DAG.mkGram gram
+--           input = A.fromList sent
+--           auto = A.mkAuto memoTerm dag input (posMap sent) headMap
+--       in  D.consumeDerivs auto input (S.singleton start)
+
     memoTerm = Memo.wrap
       (uncurry T.Term)
       ((,) <$> T.orth <*> T.pos)
@@ -85,6 +103,7 @@ testAStar =
     memoString = Memo.wrap
       Txt.pack Txt.unpack
       (Memo.list Memo.char)
+
     posMap input = M.fromList $ do
       tok <- input
       pos <- maybeToList (T.pos tok)
