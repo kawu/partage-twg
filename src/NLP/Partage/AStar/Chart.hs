@@ -35,12 +35,9 @@ module NLP.Partage.AStar.Chart
   , rootSpan
   , rootEnd
   , provideBeg
-  , provideBeg'
   , provideBegIni
   , provideBegIni'
   , withGap
-  , provideBegAux
-  , auxModifyGap
 )
 where
 
@@ -523,40 +520,6 @@ provideBegIx p =
   , p ^. spanP ^. beg )
 
 
--- | Return all processed items which:
--- * are fully matched (i.e. passive)
--- * provide a label with a given non-terminal,
--- * begin on the given position,
---
--- (Note the similarity to `provideBeg`)
---
--- TODO: The result is not top-level auxiliary.
--- See `tryAdjoinInit'` and `tryAdjoinInit`.
--- TODO: Remove the todo above.
-provideBeg'
-    :: (Ord n, Ord t, MS.MonadState s m)
-    => (s -> Chart n t)
-    -> n -> Pos
-    -> P.ListT m (Passive n t, DuoWeight)
-provideBeg' getChart x i = undefined
--- provideBeg' getChart x i = do
---     Chart{..} <- getChart <$> lift MS.get
---     P.Select $ do
---       P.each $ case M.lookup i donePassiveIni >>= M.lookup x of
---         Nothing -> []
---         Just m ->
---           map
---             (Arr.second duoWeight)
---             ((M.elems >=> M.toList) m)
---             -- ((M.elems >=> M.elems >=> M.toList) m)
---       P.each $ case M.lookup i donePassiveAuxNoTop >>= M.lookup x of
---         Nothing -> []
---         Just m ->
---           map
---             (Arr.second duoWeight)
---             ((M.elems >=> M.toList) m)
-
-
 -- | Return all passive items which:
 -- * provide a given label,
 -- * begin on the given position.
@@ -688,95 +651,6 @@ withGap getAuto getChart gap = do
 -- | Indexing function for `provideBegIni'`
 withGapIx :: Passive n t -> [(Pos, Pos, n)]
 withGapIx p = S.toList $ p ^. spanP ^. gaps
-
-
--- | Return all auxiliary passive items which:
--- * provide a given DAG label,
--- * begin on the given position.
---
--- TODO: Should be optimized.
-provideBegAux
-    :: (Ord n, Ord t, MS.MonadState s m)
-    => (s -> Auto n t)
-    -> (s -> Chart n t)
-    -> DAG.DID -> Pos
-    -> P.ListT m (Passive n t, DuoWeight)
-provideBegAux getAuto getChart x i = undefined
--- provideBegAux getAuto getChart x i = do
---   compState <- lift MS.get
---   let Chart{..} = getChart compState
---       auto = getAuto compState
---       -- n = nonTerm (Right x) auto
---       n = nonTerm x auto
---   each $ case M.lookup i donePassiveAuxNoTop >>= M.lookup n of
---     Nothing -> []
---     Just m ->
---       [ (q, duoWeight e)
---       | (q, e) <- (M.elems >=> M.toList) m
---       -- , q ^. dagID == Right x ]
---       , q ^. dagID == x ]
-
-
--- | Return all fully parsed items:
--- * top-level and representing auxiliary trees,
--- * modifying the given source non-terminal,
--- * with the given gap.
-auxModifyGap
-    :: (Ord n, MS.MonadState s m)
-    => (s -> Chart n t)
-    -> n -> (Pos, Pos)
-    -> P.ListT m (Passive n t, DuoWeight)
-auxModifyGap getChart x (i, j) = undefined
--- auxModifyGap getChart x (i, j) = do
---     Chart{..} <- getChart <$> lift MS.get
---     each $ case (M.lookup i >=> M.lookup x >=> M.lookup j) donePassiveAuxTop of
---         Nothing -> []
---         Just m -> -- map (Arr.second priWeight) (M.toList m)
---           [ (p, duoWeight e)
---           | (p, e) <- M.toList m ]
-
-
--------------------------------------------------
--- 4-key map operations
---------------------------------------------------
-
-
--- -- | Lookup a 4-element key in the map.
--- lookup4
---   :: (Ord a, Ord b, Ord c, Ord d)
---   => a -> b -> c -> d
---   -> M.Map a (M.Map b (M.Map c (M.Map d e)))
---   -> Maybe e
--- lookup4 x y z p =
---   M.lookup x >=>
---   M.lookup y >=>
---   M.lookup z >=>
---   M.lookup p
--- 
--- 
--- -- | Insert a 4-element key and the corresponding value in the map.
--- -- Use the combining function if value already present in the map.
--- insertWith4
---   :: (Ord a, Ord b, Ord c, Ord d)
---   => (e -> e -> e)
---   -> a -> b -> c -> d -> e
---   -> M.Map a (M.Map b (M.Map c (M.Map d e)))
---   -> M.Map a (M.Map b (M.Map c (M.Map d e)))
--- insertWith4 f x y z p q =
---   M.insertWith
---     ( M.unionWith
---       ( M.unionWith
---         ( M.unionWith f )
---       )
---     )
---     x
---     ( M.singleton
---       y
---       ( M.singleton
---         z
---         ( M.singleton p q )
---       )
---     )
 
 
 --------------------------------------------------

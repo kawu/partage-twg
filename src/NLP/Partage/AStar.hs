@@ -808,13 +808,6 @@ provideBeg
 provideBeg = Chart.provideBeg automat chart
 
 
--- | See `Chart.provideBeg'`.
-provideBeg'
-    :: (Ord n, Ord t) => n -> Pos
-    -> P.ListT (EarleyPipe n t) (Passive n t, DuoWeight)
-provideBeg' = Chart.provideBeg' chart
-
-
 -- | See `Chart.provideBegIni`.
 provideBegIni
     :: (Ord n, Ord t) => n -> Pos
@@ -830,25 +823,11 @@ provideBegIni'
 provideBegIni' = Chart.provideBegIni' automat chart
 
 
--- | TODO
+-- | See `Chart.withGap`.
 withGap
     :: Ord n => (Pos, Pos, n)
     -> P.ListT (EarleyPipe n t) (Passive n t, DuoWeight)
 withGap = Chart.withGap automat chart
-
-
--- | See `Chart.provideBegAux`.
-provideBegAux
-    :: (Ord n, Ord t) => DID -> Pos
-    -> P.ListT (EarleyPipe n t) (Passive n t, DuoWeight)
-provideBegAux = Chart.provideBegAux automat chart
-
-
--- | See `Chart.auxModifyGap`.
-auxModifyGap
-    :: Ord n => n -> (Pos, Pos)
-    -> P.ListT (EarleyPipe n t) (Passive n t, DuoWeight)
-auxModifyGap = Chart.auxModifyGap chart
 
 
 --------------------------------------------------
