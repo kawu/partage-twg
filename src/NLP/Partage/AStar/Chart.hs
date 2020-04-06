@@ -128,9 +128,14 @@ data Chart n t = Chart
     , _donePassive :: M.Map (Passive n t) (ExtWeight n t)
     -- ^ Processed passive items.
 
-    -- , _expectEndIndex :: M.Map (DAG.DID, Pos) (Active n)
     , _expectEndIndex :: Index (Active n) (DAG.DID, Pos)
     -- ^ Index for `expectEnd`
+
+    , _rootEndIndex :: Index (Active n) (n, Pos)
+    -- ^ Index for `rootEnd`
+
+    , _provideBegIndex :: Index (Passive n t) (DAG.DID, Pos)
+    -- ^ Index for `provideBeg`
     }
 $( makeLenses [''Chart] )
 
@@ -141,6 +146,8 @@ empty auto = Chart
   { _doneActive = M.empty
   , _donePassive = M.empty
   , _expectEndIndex = mkIndex' (expectEndIx auto)
+  , _rootEndIndex = mkIndex (rootEndIx auto)
+  , _provideBegIndex = mkIndex provideBegIx
   }
 
 
@@ -209,6 +216,7 @@ saveActive
 saveActive lhsMap p ts
   = modL' doneActive (M.insertWith joinExtWeight' p ts)
   . modL' expectEndIndex (updateWith p)
+  . modL' rootEndIndex (updateWith p)
 
 
 -- | Check if, for the given active item, the given transitions are already
@@ -257,8 +265,9 @@ savePassive
   -> Auto n t
   -> Chart n t
   -> Chart n t
-savePassive p ts _auto =
-  modL' donePassive $ M.insertWith joinExtWeight' p ts
+savePassive p ts _auto
+  = modL' donePassive (M.insertWith joinExtWeight' p ts)
+  . modL' provideBegIndex (updateWith p)
 
 
 -- | Check if, for the given active item, the given transitions are already
@@ -443,43 +452,33 @@ rootEnd
     -> P.ListT m (Active n, DuoWeight)
 rootEnd getAuto getChart lhsNT i = do
   compState <- lift MS.get
-  let Chart{..} = getChart compState
-      auto = getAuto compState
-      -- dag = gramDAG auto
-  -- loop over each active item
-  (q, e) <- each $ M.toList _doneActive
+  let chart = getChart compState
+  q <- each $ retrieve (lhsNT, i) (chart ^. rootEndIndex)
+  e <- some $ M.lookup q (chart ^. doneActive)
+  return (q, duoWeight e)
+--   let Chart{..} = getChart compState
+--       auto = getAuto compState
+--       -- dag = gramDAG auto
+--   -- loop over each active item
+--   (q, e) <- each $ M.toList _doneActive
+--   -- determine the LHS non-terminal
+--   let lhs = lhsNonTerm auto M.! (q ^. state)
+--   -- check the necessary constraints
+--   guard $ notFootLabel lhs == lhsNT
+--   guard $ q ^. spanA ^. end == i
+--   -- return the item
+--   return (q, duoWeight e)
+
+
+-- | Indexing function for `rootEnd`
+rootEndIx :: Auto n t -> Active n -> (n, Pos)
+rootEndIx auto q =
   -- determine the LHS non-terminal
   let lhs = lhsNonTerm auto M.! (q ^. state)
-  -- check the necessary constraints
-  guard $ notFootLabel lhs == lhsNT
-  guard $ q ^. spanA ^. end == i
-  -- return the item
-  return (q, duoWeight e)
---   where
---     getLabel dag did = labNonTerm =<< DAG.label did dag
+   in (notFootLabel lhs, q ^. spanA ^. end)
 
 
--- -- | Return all active processed items which:
--- -- * has the given LHS non-terminal,
--- -- * end on the given position.
--- rootEnd
---     :: (Ord n, Ord t, MS.MonadState s m)
---     => (s -> Chart n t)
---     -> n
---     -> Pos
---     -> P.ListT m (Active n, DuoWeight)
--- rootEnd getChart lhsNT i = undefined
--- -- rootEnd getChart lhsNT i = do
--- --     compState <- lift MS.get
--- --     let ch@Chart{..} = getChart compState
--- --     doneSet <- some $ M.lookup (i, lhsNT) doneActiveByRoot
--- --     each $ do
--- --       q <- S.toList doneSet
--- --       e <- maybeToList (activeTrav q ch)
--- --       return (q, duoWeight e)
-
-
--- | NEW 20.02.202: Return all passive items which:
+-- | NEW 20.02.2020: Return all passive items which:
 -- * provide a given DAG label,
 -- * begin on the given position.
 provideBeg
@@ -490,15 +489,17 @@ provideBeg
     -> P.ListT m (Passive n t, DuoWeight)
 provideBeg _getAuto getChart x i = do
   compState <- lift MS.get
-  let Chart{..} = getChart compState
-  -- loop over each passive item
-  (p, e) <- each $ M.toList _donePassive
-  -- check the necessary constraints
-  guard $ p ^. dagID == x
-  guard $ p ^. spanP ^. beg == i
-  -- return the item
+  let chart = getChart compState
+  p <- each $ retrieve (x, i) (chart ^. provideBegIndex)
+  e <- some $ M.lookup p (chart ^. donePassive)
   return (p, duoWeight e)
 
+
+-- | Indexing function for `provideBeg`
+provideBegIx :: Passive n t -> (DAG.DID, Pos)
+provideBegIx p =
+  ( p ^. dagID
+  , p ^. spanP ^. beg )
 
 
 -- | Return all processed items which:
