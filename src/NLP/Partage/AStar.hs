@@ -825,7 +825,7 @@ provideBegIni =
 
 -- | See `Chart.provideBegIni`.
 provideBegIni'
-    :: (Ord n, Ord t) => Either (NotFoot n) DID -> Pos
+    :: (Ord n, Ord t) => NotFoot n -> Pos
     -> P.ListT (EarleyPipe n t) (Passive n t, DuoWeight)
 provideBegIni' = Chart.provideBegIni' automat chart
 
@@ -1455,7 +1455,7 @@ trySisterAdjoin' q qw = void $ P.runListT $ do
   -- Find processed passive items which begin where `q` ends and which represent
   -- sister trees.
   let sister = lhsNotFoot {isSister = True}
-  (p, pw) <- provideBegIni' (Left sister) (q ^. spanA ^. end)
+  (p, pw) <- provideBegIni' sister (q ^. spanA ^. end)
   -- check w.r.t. the dependency structure
 --   let anchorMap = anchorPos auto
 --       anchorMap' = anchorPos' auto

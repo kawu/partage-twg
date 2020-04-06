@@ -142,6 +142,9 @@ data Chart n t = Chart
 
     , _provideBegIniIndex :: Index (Passive n t) (n, Pos)
     -- ^ Index for `provideBegIni`
+
+    , _provideBegIni'Index :: Index (Passive n t) (NotFoot n, Pos)
+    -- ^ Index for `provideBegIni'`
     }
 $( makeLenses [''Chart] )
 
@@ -156,6 +159,7 @@ empty auto = Chart
   , _provideBegIndex = mkIndex provideBegIx
   , _rootSpanIndex = mkIndex (rootSpanIx auto)
   , _provideBegIniIndex = mkIndex (provideBegIniIx auto)
+  , _provideBegIni'Index = mkIndex (provideBegIni'Ix auto)
   }
 
 
@@ -278,6 +282,7 @@ savePassive p ts _auto
   . modL' provideBegIndex (updateWith p)
   . modL' rootSpanIndex (updateWith p)
   . modL' provideBegIniIndex (updateWith p)
+  . modL' provideBegIni'Index (updateWith p)
 
 
 -- | Check if, for the given active item, the given transitions are already
@@ -587,50 +592,69 @@ provideBegIniIx auto p =
 -- | Return all initial passive items which:
 -- * provide a given label,
 -- * begin on the given position.
---
--- TODO: Should be better optimized.
 provideBegIni'
     :: (Ord n, Ord t, MS.MonadState s m)
     => (s -> Auto n t)
     -> (s -> Chart n t)
-    -> Either (NotFoot n) DAG.DID
+    -> NotFoot n
     -> Pos
     -> P.ListT m (Passive n t, DuoWeight)
 provideBegIni' getAuto getChart x i = do
   compState <- lift MS.get
-  let Chart{..} = getChart compState
-      auto = getAuto compState
-      dag = gramDAG auto
-      label did =
-        case DAG.label did dag >>= labNonTerm of
-          Just x -> x
-          Nothing -> error "AStar.Chart.provideBegIni': unknown DID"
-      labNonTerm (O.Sister y) = Just $ NotFoot
-        { notFootLabel = y
-        , isSister = True }
-      labNonTerm (O.NonTerm y) = Just $ NotFoot
-        { notFootLabel = y
-        , isSister = False }
-      labNonTerm (O.DNode y) = Just $ NotFoot
-        { notFootLabel = y
-        , isSister = False }
-      labNonTerm _ = Nothing
---       n =
---         case x of
---           Left nt -> notFootLabel nt
---           Right did -> nonTerm did auto
-      checkNonTerm qDID =
-        case x of
-          -- Left nt -> nonTerm qDID auto == nt
-          Left nt -> label qDID == nt
-          Right did -> qDID == did
-  -- loop over each passive item
-  (q, e) <- each $ M.toList _donePassive
-  -- check the necessary constraints
-  guard . checkNonTerm $ q ^. dagID
-  guard $ q ^. spanP ^. beg == i
-  -- return the item
+  let chart = getChart compState
+  q <- each $ retrieve (x, i) (chart ^. provideBegIni'Index)
+  e <- some $ M.lookup q (chart ^. donePassive)
   return (q, duoWeight e)
+--   let Chart{..} = getChart compState
+--       auto = getAuto compState
+--       dag = gramDAG auto
+--       label did =
+--         case DAG.label did dag >>= labNonTerm of
+--           Just x -> x
+--           Nothing -> error "AStar.Chart.provideBegIni': unknown DID"
+--       labNonTerm (O.Sister y) = Just $ NotFoot
+--         { notFootLabel = y
+--         , isSister = True }
+--       labNonTerm (O.NonTerm y) = Just $ NotFoot
+--         { notFootLabel = y
+--         , isSister = False }
+--       labNonTerm (O.DNode y) = Just $ NotFoot
+--         { notFootLabel = y
+--         , isSister = False }
+--       labNonTerm _ = Nothing
+--       checkNonTerm qDID = label qDID == x
+--   -- loop over each passive item
+--   (q, e) <- each $ M.toList _donePassive
+--   -- check the necessary constraints
+--   guard . checkNonTerm $ q ^. dagID
+--   guard $ q ^. spanP ^. beg == i
+--   -- return the item
+--   return (q, duoWeight e)
+
+
+-- | Indexing function for `provideBegIni'`
+provideBegIni'Ix
+  :: Auto n t -> Passive n t -> (NotFoot n, Pos)
+provideBegIni'Ix auto p =
+  ( label (p ^. dagID)
+  , p ^. spanP ^. beg
+  )
+  where
+    dag = gramDAG auto
+    label did =
+      case DAG.label did dag >>= labNonTerm of
+        Just x -> x
+        Nothing -> error "AStar.Chart.provideBegIni'Ix: unknown DID"
+    labNonTerm (O.Sister y) = Just $ NotFoot
+      { notFootLabel = y
+      , isSister = True }
+    labNonTerm (O.NonTerm y) = Just $ NotFoot
+      { notFootLabel = y
+      , isSister = False }
+    labNonTerm (O.DNode y) = Just $ NotFoot
+      { notFootLabel = y
+      , isSister = False }
+    labNonTerm _ = Nothing
 
 
 -- | Return all passive items with:
