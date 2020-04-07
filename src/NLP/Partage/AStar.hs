@@ -795,10 +795,10 @@ rootSpan
 rootSpan = Chart.rootSpan automat chart
 
 
--- | See `Chart.rootEnd`.
-rootEnd :: (Ord n, Ord t)
+-- | See `Chart.plainRootEnd`.
+plainRootEnd :: (Ord n, Ord t)
         => n -> Pos -> P.ListT (EarleyPipe n t) (Active n, DuoWeight)
-rootEnd = Chart.rootEnd automat chart
+plainRootEnd = Chart.plainRootEnd automat chart
 
 
 -- | See `Chart.provideBeg`.
@@ -1369,8 +1369,8 @@ trySisterAdjoin p pw = void $ P.runListT $ do
     guard . not $ getL ws p
     -- find active items which end where `p' begins and which have the
     -- corresponding LHS non-terminal
---     (q, qw) <- rootEnd (notFootLabel root) (getL beg pSpan)
-    (q, qw) <- rootEnd (nonTermH pDID hype) (getL beg pSpan)
+--     (q, qw) <- plainRootEnd (notFootLabel root) (getL beg pSpan)
+    (q, qw) <- plainRootEnd (nonTermH pDID hype) (getL beg pSpan)
     -- check w.r.t. the dependency structure
 --     let anchorMap = anchorPos auto
 --         anchorMap' = anchorPos' auto
@@ -1430,6 +1430,8 @@ trySisterAdjoin' q qw = void $ P.runListT $ do
   lhsMap <- RWS.gets (lhsNonTerm . automat)
   -- Learn what is the LHS of `q`
   let lhsNotFoot = lhsMap M.! getL state q
+  -- Check the LHS is not marked for sister-adjunction -- we do not want
+  -- to allow sister-adjoining to the root of a sister tree.
   guard . not $ isSister lhsNotFoot
   -- Find processed passive items which begin where `q` ends and which represent
   -- sister trees.

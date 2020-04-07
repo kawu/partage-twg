@@ -33,7 +33,7 @@ module NLP.Partage.AStar.Chart
   , finalFrom
   , expectEnd
   , rootSpan
-  , rootEnd
+  , plainRootEnd
   , provideBeg
   , provideBegIni
   , provideBegIni'
@@ -128,8 +128,8 @@ data Chart n t = Chart
     , _expectEndIndex :: Index (Active n) (DAG.DID, Pos)
     -- ^ Index for `expectEnd`
 
-    , _rootEndIndex :: Index (Active n) (n, Pos)
-    -- ^ Index for `rootEnd`
+    , _plainRootEndIndex :: Index (Active n) (n, Pos)
+    -- ^ Index for `plainRootEnd`
 
     , _provideBegIndex :: Index (Passive n t) (DAG.DID, Pos)
     -- ^ Index for `provideBeg`
@@ -155,7 +155,7 @@ empty auto = Chart
   { _doneActive = M.empty
   , _donePassive = M.empty
   , _expectEndIndex = mkIndex' (expectEndIx auto)
-  , _rootEndIndex = mkIndex (rootEndIx auto)
+  , _plainRootEndIndex = mkIndex' (plainRootEndIx auto)
   , _provideBegIndex = mkIndex provideBegIx
   , _rootSpanIndex = mkIndex (rootSpanIx auto)
   , _provideBegIniIndex = mkIndex (provideBegIniIx auto)
@@ -228,7 +228,7 @@ saveActive
 saveActive lhsMap p ts
   = modL' doneActive (M.insertWith joinExtWeight' p ts)
   . modL' expectEndIndex (updateWith p)
-  . modL' rootEndIndex (updateWith p)
+  . modL' plainRootEndIndex (updateWith p)
 
 
 -- | Check if, for the given active item, the given transitions are already
@@ -459,41 +459,31 @@ rootSpanIx auto p =
 
 
 -- | Return all active processed items which:
--- * has the given LHS non-terminal,
+-- * has the given LHS (non-sister) non-terminal,
 -- * end on the given position.
-rootEnd
+plainRootEnd
     :: (Ord n, Ord t, MS.MonadState s m)
     => (s -> Auto n t)
     -> (s -> Chart n t)
     -> n
     -> Pos
     -> P.ListT m (Active n, DuoWeight)
-rootEnd getAuto getChart lhsNT i = do
+plainRootEnd getAuto getChart lhsNT i = do
   compState <- lift MS.get
   let chart = getChart compState
-  q <- each $ retrieve (lhsNT, i) (chart ^. rootEndIndex)
+  q <- each $ retrieve (lhsNT, i) (chart ^. plainRootEndIndex)
   e <- some $ M.lookup q (chart ^. doneActive)
   return (q, duoWeight e)
---   let Chart{..} = getChart compState
---       auto = getAuto compState
---       -- dag = gramDAG auto
---   -- loop over each active item
---   (q, e) <- each $ M.toList _doneActive
---   -- determine the LHS non-terminal
---   let lhs = lhsNonTerm auto M.! (q ^. state)
---   -- check the necessary constraints
---   guard $ notFootLabel lhs == lhsNT
---   guard $ q ^. spanA ^. end == i
---   -- return the item
---   return (q, duoWeight e)
 
 
--- | Indexing function for `rootEnd`
-rootEndIx :: Auto n t -> Active n -> (n, Pos)
-rootEndIx auto q =
+-- | Indexing function for `plainRootEnd`
+plainRootEndIx :: Auto n t -> Active n -> [(n, Pos)]
+plainRootEndIx auto q = do
   -- determine the LHS non-terminal
   let lhs = lhsNonTerm auto M.! (q ^. state)
-   in (notFootLabel lhs, q ^. spanA ^. end)
+  -- make sure that the LHS is not marked as sister node
+  guard . not $ isSister lhs
+  return (notFootLabel lhs, q ^. spanA ^. end)
 
 
 -- | NEW 20.02.2020: Return all passive items which:
