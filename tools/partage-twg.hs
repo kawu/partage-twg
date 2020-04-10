@@ -1000,7 +1000,8 @@ showParse deriv
   $ parse
   where
     showIt = Br.showTree . fmap rmTokID'
-    parse = fst $ D.toParse deriv
+    -- parse = fst $ D.toParse deriv
+    parse = D.toParse deriv
     check t =
       let posList = map A.position (catMaybes $ O.project t) in
       if posList == List.sort posList

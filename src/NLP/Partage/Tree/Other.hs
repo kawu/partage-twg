@@ -66,8 +66,7 @@ isTerm (Term _) = True
 isTerm _        = False
 
 
--- | A generalized `anchor`ing function, which applies the given function to all
--- terminals, both anchors and regular ones (see `Term`).
+-- | Apply the function to terminals.
 mapTerm :: (t -> t') -> Node n t -> Node n t'
 mapTerm f =
   onNode
@@ -132,7 +131,8 @@ unTree (T.Leaf x)    = R.Node (Term x) []
 --     Nothing -> Left $ mkTree t
 
 
--- | Convert the parsed tree into an LTAG tree.
+-- | Convert the parsed tree into an LTAG tree.  Beware that this function
+-- does not preserve DNode/Sister markings!
 mkTree :: Tree n t -> T.Tree n t
 mkTree (R.Node n xs) = case n of
     Term x  -> T.Leaf x

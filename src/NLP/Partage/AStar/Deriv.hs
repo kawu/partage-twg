@@ -179,30 +179,40 @@ deriv4show =
 ---------------------------
 
 
--- | Convert the given derivation tree to a parsed tree.  The second element of
--- the reuslting tuple is `True` if the tree is a sister-adjunction tree.
-toParse :: (Show n, Show t) => Deriv UnNorm n t -> (O.Tree n (Maybe t), Bool)
-toParse deriv =
-  ( applyAll
-      (map (applyDeriv . fst . toParse) modif)
-      tree'
-  , isSister 
-  )
+-- | Convert the given derivation tree to a parsed tree.
+toParse :: (Show n, Show t) => Deriv UnNorm n t -> O.Tree n (Maybe t)
+toParse =
+  -- The usage of `head` below should be safe, since there should be at least
+  -- one parsed tree corresponding to the given derivation.  Of course it could
+  -- be a good idea to make sure that there is *exactly* one such parsed tree.
+  head . normalizeParse . toUnNormParse
+
+
+-- | Normalize the parse tree (i.e. remove `Sister` and `DNode` markers).
+normalizeParse :: O.Tree n (Maybe t) -> [O.Tree n (Maybe t)]
+normalizeParse R.Node{..} =
+  case rootLabel of
+    O.Sister _ -> normSubForest
+    O.DNode _ -> normSubForest
+    _ -> [R.Node rootLabel normSubForest]
+  where
+    normSubForest = concatMap normalizeParse subForest
+
+
+-- | Convert the given derivation tree to an *un-normalized* parsed tree.  The
+-- resulting parse is un-normalized in the sense that it contains `DNode` and
+-- `Sister` markings which should be still processed (see `normalizeParse`).
+toUnNormParse :: (Show n, Show t) => Deriv UnNorm n t -> O.Tree n (Maybe t)
+toUnNormParse deriv =
+  applyAll
+    (map (applyDeriv . toUnNormParse) modif)
+    tree'
   where
     DerivNode{..} = R.rootLabel deriv
-    isSister =
-      case node of
-        O.Sister _ -> True
-        _ -> False
---     rmSisterRoot t
---       | isSister  = R.subForest t
---       | otherwise = [t]
     tree' = R.Node
       { R.rootLabel = node
-      , R.subForest = concatMap (onChild . toParse) (R.subForest deriv)
+      , R.subForest = map toUnNormParse (R.subForest deriv)
       }
-    onChild (t, False) = [t]
-    onChild (t, True)  = R.subForest t
 
 
 -- | Apply a given modifier tree to a given head tree.
@@ -226,10 +236,6 @@ applyDeriv mod hed
       case R.rootLabel t of
         O.Sister _ -> True
         _ -> False
---     isDNode t =
---       case R.rootLabel t of
---         O.DNode _ -> True
---         _ -> False
 
 
 -- | Apply substitution
@@ -278,10 +284,20 @@ applyWrapping
     -- ^ Tree wrapped over
   -> O.Tree n (Maybe t)
 applyWrapping wrp mod =
-  O.replaceSlot' wrp (rmRoot mod)
+  markDNode $ O.replaceSlot' wrp mod
   where
-    rmRoot (R.Node x [t]) = t
-    rmRoot _ = error "cannot remove the root without getting a forest!"
+    markDNode (R.Node x ts) =
+      flip R.Node ts $
+        case x of
+          O.NonTerm nt -> O.DNode nt
+          O.DNode nt ->
+            error "node already marked as DNode"
+          O.Sister nt ->
+            error "node already marked as Sister"
+          O.Term t ->
+            error "cannot mark terminal as DNode"
+--     rmRoot (R.Node x [t]) = t
+--     rmRoot _ = error "cannot remove the root without getting a forest!"
 
 
 -- -- | Split the forest into two separate parts, on two sides of the given
