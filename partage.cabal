@@ -93,7 +93,7 @@ library
     -- cpp-options: -DCheckMonotonic
 
     -- Grammar compression
-    cpp-options: -DCompression
+    -- cpp-options: -DCompression
 
     -- WARNING: doesn't work with A* (and makes soma A* tests fail)
     -- cpp-options: -DExtraCompression
