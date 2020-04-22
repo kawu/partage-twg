@@ -44,7 +44,7 @@ import           NLP.Partage.AStar.Base (Pos)
 import           NLP.Partage.DAG        (DID)
 import qualified NLP.Partage.DAG as DAG
 
-import           NLP.Partage.AStar.Base (nonTerm')
+import           NLP.Partage.AStar.Base (nonTerm', isSister')
 import           NLP.Partage.AStar.Auto (Auto (..))
 
 
@@ -134,6 +134,8 @@ printPassive p auto = do
       show (nonTerm did auto) ++ "]"
     putStr ", "
     putStr $ "root=" ++ show (DAG.isRoot did (gramDAG auto))
+    putStr ", "
+    putStr $ "sister=" ++ show (isSister' did (gramDAG auto))
     putStr ", "
     printSpan $ getL spanP p
     putStrLn ")"
