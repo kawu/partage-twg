@@ -1390,7 +1390,7 @@ trySisterAdjoin p pw = void $ P.runListT $ do
 
     -- construct the resultant item with the same state and extended span
     let q' = setL (end . spanA) (getL end pSpan)
-           -- UPDATE 19.02.202: handle the gap set
+           -- UPDATE 19.02.2020: handle the gap set
            . modL' (gaps . spanA) (S.union $ getL gaps pSpan)
            $ q
         newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
@@ -1456,7 +1456,10 @@ trySisterAdjoin' q qw = void $ P.runListT $ do
 
   -- construct the resulting item with the same state and extended span
   let pSpan = getL spanP p
-      q' = setL (end . spanA) (getL end pSpan) $ q
+      q' = setL (end . spanA) (getL end pSpan)
+           -- UPDATE 22.04.2020: handle the gap set
+         . modL' (gaps . spanA) (S.union $ getL gaps pSpan)
+         $ q
       newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
       newGap = disjointUnion (duoGap pw) (duoGap qw)
       newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
