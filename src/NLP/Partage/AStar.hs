@@ -1650,6 +1650,8 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
     parMap <- RWS.gets (dagParMap . automat)
     -- make sure the node is top-level
     guard $ DAG.isRoot qDID dag
+    -- NEW 16.06.2020: make sure `q` does not represent sister tree
+    guard . not $ isSister' qDID dag
     -- for each available gap
     gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
     -- TODO: add desc
@@ -1742,6 +1744,8 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
 
     -- make sure `q` is top-level
     guard $ DAG.isRoot qDID dag
+    -- NEW 16.06.2020: make sure `q` does not represent sister tree
+    guard . not $ isSister' qDID dag
 
     -- determine q's non-terminal
     qNonTerm <- some (nonTerm' qDID dag)
