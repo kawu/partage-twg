@@ -51,8 +51,8 @@ module NLP.Partage.Earley.AutoAP
 
 
 import           Prelude hiding             (span, (.))
-import           Control.Applicative        ((<$>))
-import           Control.Monad      (guard, void) -- , when)
+import           Control.Applicative        ((<$>), (<|>))
+import           Control.Monad      (guard, void, unless) -- , when)
 import           Control.Monad.Trans.Class  (lift)
 -- import           Control.Monad.Trans.Maybe  (MaybeT (..))
 import qualified Control.Monad.RWS.Strict   as RWS
@@ -60,8 +60,7 @@ import           Control.Category ((>>>), (.))
 
 -- import           Data.Function              (on)
 -- import           Data.Either                (isLeft)
-import           Data.Maybe     ( isNothing, mapMaybe
-                                , maybeToList )
+import           Data.Maybe     (isNothing, isJust, fromJust, mapMaybe, maybeToList)
 import qualified Data.Map.Strict            as M
 -- import           Data.Ord       ( comparing )
 -- import           Data.List      ( sortBy )
@@ -783,6 +782,10 @@ trySubst p = void $ P.runListT $ do
     -- find active items which end where `p' begins and which
     -- expect the DAG node provided by `p'
     q <- expectEnd theDID (getL beg pSpan)
+
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP p) || isNothing (getL callBackNodeA q)
+
     -- follow the DAG node
     j <- follow (getL state q) theDID
     -- construct the resultant state
@@ -790,6 +793,8 @@ trySubst p = void $ P.runListT $ do
            . setL (end . spanA) (getL end pSpan)
            -- UPDATE 19.02.202: handle the gap set
            . modL' (gaps . spanA) (S.union $ getL gaps pSpan)
+           -- UPDATE 01.09.2020: internal wrapping change
+           . setL callBackNodeA (getL callBackNodeP p <|> getL callBackNodeA q)
            $ q
     -- push the resulting state into the waiting queue
     lift $ pushInduced q' $ Subst p q
@@ -976,6 +981,10 @@ trySisterAdjoin p = void $ P.runListT $ do
 #ifdef DebugOn
     begTime <- lift . lift $ Time.getCurrentTime
 #endif
+
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP p)
+
     let pDID = getL dagID p
         pSpan = getL spanP p
 --  UPDATE 19.02.2020: no longer necessary to check if `regular`,
@@ -1126,6 +1135,86 @@ tryCompleteWrapping q = void $ P.runListT $ do
 
 
 --------------------------------------------------
+-- COMPLETE WRAPPING PRIM
+--
+-- UPDATE 01.09.2020: new rule!
+--------------------------------------------------
+
+
+-- | Wrap a fully-parsed tree represented by `q` over a partially parsed
+-- tree represented by `q`.
+tryCompleteWrappingPrim :: (SOrd t, SOrd n) => Passive n t -> Earley n t ()
+tryCompleteWrappingPrim q = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- lift . lift $ Time.getCurrentTime
+#endif
+    let qDID = q ^. dagID
+        qSpan = q ^. spanP
+    -- the underlying dag grammar
+    dag <- RWS.gets (gramDAG . automat)
+    parMap <- RWS.gets (dagParMap . automat)
+
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    -- make sure `qDID` is *not* a root
+    Right qTrueDID <- return qDID
+    -- guard . not $ isRoot qDID
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    -- for each available gap
+    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+    -- TODO: add desc
+    qNonTerm <- some (nonTerm' qDID dag)
+    -- take all passive items with a given span and a given
+    -- root non-terminal (IDs irrelevant)
+    p <- rootSpan gapNT (gapBeg, gapEnd)
+    -- make sure that `p` has ?ws == True
+    guard $ getL ws p
+    -- verify the label of the parent
+    parIdSet <- some $
+      case p ^. dagID of
+        Left _ ->
+          error "tryCompleteWrapping: d-daughter root"
+        Right did -> M.lookup did parMap
+    if (S.size parIdSet > 1)
+       then error "tryCompleteWrapping: d-daughter node with several parents"
+       else return ()
+    parID <- each (S.toList parIdSet)
+    parNonTerm <- some (labNonTerm =<< DAG.label parID dag) -- parID dag)
+    guard $ qNonTerm == parNonTerm
+
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    -- make sure that the parent of the DNode is a root
+    guard $ DAG.isRoot parID dag
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    -- calculate the new set of gaps
+    let newGaps = S.union (p ^. spanP ^. gaps)
+                . S.delete gap
+                $ qSpan ^. gaps
+    -- construct the resulting item
+    let p' = setL (spanP >>> beg) (qSpan ^. beg)
+           . setL (spanP >>> end) (qSpan ^. end)
+           . setL (spanP >>> gaps) newGaps
+           . setL ws False
+           -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+           . setL callBackNodeP (Just parID)
+           -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+           $ p
+
+    -- TODO: CompleteWrappingPrim
+    lift $ pushPassive p' $ error "CompleteWrappingPrim" -- CompleteWrapping q p
+#ifdef DebugOn
+    hype <- RWS.get
+    lift . lift $ do
+        endTime <- Time.getCurrentTime
+        putStr "[C'] " >> printPassive q hype
+        putStr "  +  " >> printPassive p hype
+        putStr "  :  " >> printPassive p' hype
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
+
+
+--------------------------------------------------
 -- DEACTIVATE
 --------------------------------------------------
 
@@ -1136,20 +1225,84 @@ tryDeactivate p = void $ P.runListT $ do
 #ifdef DebugOn
   begTime <- lift . lift $ Time.getCurrentTime
 #endif
+
+  -- UPDATE 01.09.2020: internal wrapping change
+  guard . isNothing $ getL callBackNodeA p
+
   dag <- RWS.gets (gramDAG . automat)
   did <- heads (getL state p)
   let q = if not (DAG.isRoot did dag)
           then Passive
                { _dagID = Right did
                , _spanP = getL spanA p
-               , _ws = DAG.isDNode did dag }
+               , _ws = DAG.isDNode did dag
+               , _callBackNodeP = Nothing }
           else check $ do
             x <- mkRoot <$> DAG.label did dag
             return $ Passive
               { _dagID = Left x
               , _spanP = getL spanA p
-              , _ws = DAG.isDNode did dag }
+              , _ws = DAG.isDNode did dag
+              , _callBackNodeP = Nothing }
   lift $ pushPassive q (Deactivate p)
+#ifdef DebugOn
+  -- print logging information
+  hype <- RWS.get
+  lift . lift $ do
+      endTime <- Time.getCurrentTime
+      putStr "[D]  " >> printActive p
+      putStr "  :  " >> printPassive q hype
+      putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
+  where
+    mkRoot node = case node of
+      O.NonTerm x -> NotFoot {notFootLabel=x, isSister=False}
+      O.Sister x  -> NotFoot {notFootLabel=x, isSister=True}
+      _ -> error "pushInduced: invalid root"
+    check (Just x) = x
+    check Nothing  = error "pushInduced: invalid DID"
+
+--------------------------------------------------
+-- DEACTIVATE PRIM
+--
+-- UPDATE 01.09.2020: new rule!
+--------------------------------------------------
+
+
+-- | Try to perform DEACTIVATE.
+tryDeactivatePrim :: (SOrd t, SOrd n) => Active n -> Earley n t ()
+tryDeactivatePrim p = void $ P.runListT $ do
+#ifdef DebugOn
+  begTime <- lift . lift $ Time.getCurrentTime
+#endif
+
+  dag <- RWS.gets (gramDAG . automat)
+
+  -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  let mayCallBackNode = getL callBackNodeA p
+  guard $ isJust mayCallBackNode
+  let cbn = fromJust mayCallBackNode
+  unless (DAG.isRoot cbn dag) $ error
+    "DE': callback node not a root"
+  -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  did <- heads (getL state p)
+
+  -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  unless (DAG.isRoot did dag) $ error
+    "DE': mother of d-daughter not a root"
+  -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  let q = check $ do
+            x <- mkRoot <$> DAG.label cbn dag
+            return $ Passive
+              { _dagID = Left x
+              , _spanP = getL spanA p
+              , _ws = False
+              , _callBackNodeP = Nothing }
+
+  lift $ pushPassive q $ error "DeactivatePrim" -- (Deactivate p)
+
 #ifdef DebugOn
   -- print logging information
   hype <- RWS.get
@@ -1419,6 +1572,7 @@ earleyAuto auto input = do
             { _beg   = i
             , _end   = i
             , _gaps  = S.empty }
+            Nothing
         | i <- [0 .. n - 1]
         , root <- S.toList . A.roots $ gramAuto auto ]
     -- input length

@@ -10,10 +10,12 @@ module NLP.Partage.Earley.Item
 , Active (..)
 , state
 , spanA
+, callBackNodeA
 , Passive (..)
 , dagID
 , spanP
 , ws
+, callBackNodeP
 -- , isAdjoinedTo
 -- , regular
 , noGaps
@@ -66,9 +68,10 @@ $( makeLenses [''Span] )
 
 -- | Active chart item : state reference + span.
 data Active n = Active {
-      _state :: ID
-    , _spanA :: Span n
-    } deriving (Show, Eq, Ord)
+    _state :: ID
+  , _spanA :: Span n
+  , _callBackNodeA :: Maybe DID
+  } deriving (Show, Eq, Ord)
 $( makeLenses [''Active] )
 
 
@@ -82,6 +85,7 @@ data Passive n t = Passive
     -- ^ Span of the chart item
   , _ws :: Bool
     -- ^ TODO: see the inference rules
+  , _callBackNodeP :: Maybe DID
   } deriving (Show, Eq, Ord)
 $( makeLenses [''Passive] )
 
