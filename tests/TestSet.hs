@@ -1347,19 +1347,19 @@ gram18Tests =
 -- | The set of grammar/test suite pairs.
 testSuite :: [([(OTree, Weight)], [Test])]
 testSuite =
---   [ (mkGram5, gram5Tests)
---   , (mkGram6, gram6Tests)
---   , (mkGram7, gram7Tests)
---   , (mkGram8, gram8Tests)
---   , (mkGram9, gram9Tests)
---   , (mkGram10, gram10Tests)
---   , (mkGram12, gram12Tests)
---   , (mkGram13, gram13Tests)
---   , (mkGram14, gram14Tests)
---   , (mkGram15, gram15Tests)
---   , (mkGram16, gram16Tests)
---   , (mkGram17, gram17Tests)
-  [ (mkGram18, gram18Tests)
+  [ (mkGram5, gram5Tests)
+  , (mkGram6, gram6Tests)
+  , (mkGram7, gram7Tests)
+  , (mkGram8, gram8Tests)
+  , (mkGram9, gram9Tests)
+  , (mkGram10, gram10Tests)
+  , (mkGram12, gram12Tests)
+  , (mkGram13, gram13Tests)
+  , (mkGram14, gram14Tests)
+  , (mkGram15, gram15Tests)
+  , (mkGram16, gram16Tests)
+  , (mkGram17, gram17Tests)
+  , (mkGram18, gram18Tests)
   ]
 
 

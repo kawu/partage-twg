@@ -1268,6 +1268,7 @@ tryDeactivate p = void $ P.runListT $ do
     check (Just x) = x
     check Nothing  = error "pushInduced: invalid DID"
 
+
 --------------------------------------------------
 -- DEACTIVATE PRIM
 --

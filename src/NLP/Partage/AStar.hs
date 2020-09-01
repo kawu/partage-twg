@@ -99,9 +99,9 @@ module NLP.Partage.AStar
 
 
 import           Prelude hiding             (init, span, (.))
-import           Control.Applicative        ((<$>))
+import           Control.Applicative        ((<$>), (<|>))
 import qualified Control.Arrow as Arr
-import           Control.Monad      (guard, void, (>=>), when, mplus)
+import           Control.Monad      (guard, void, (>=>), when, mplus, unless)
 import           Control.Monad.Trans.Class  (lift)
 -- import           Control.Monad.Trans.Maybe  (MaybeT (..))
 import qualified Control.Monad.RWS.Strict   as RWS
@@ -1026,6 +1026,9 @@ tryPseudoSubst p pw = void $ P.runListT $ do
     -- expect the non-terminal provided by `p' (ID included)
     (q, qw) <- expectEnd pDID (pSpan ^. beg)
 
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP p) || isNothing (getL callBackNodeA q)
+
     -- follow the transition symbol
     (tranCost, j) <- follow (q ^. state) pDID
 
@@ -1037,6 +1040,8 @@ tryPseudoSubst p pw = void $ P.runListT $ do
            . setL (spanA >>> end) (pSpan ^. end)
            . setL (spanA >>> gaps)
                     ((pSpan ^. gaps) `S.union` (qSpan ^. gaps))
+           -- UPDATE 01.09.2020: internal wrapping change
+           . setL callBackNodeA (getL callBackNodeP p <|> getL callBackNodeA q)
            $ q
 
     -- push the resulting state into the waiting queue
@@ -1096,11 +1101,16 @@ tryPseudoSubst' q qw = void $ P.runListT $ do
 --          else provideBegIni (Right qDID) (q ^. spanA ^. end)
     let pSpan = p ^. spanP
 
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP p) || isNothing (getL callBackNodeA q)
+
     -- construct the resultant state
     let q' = setL state j
            . setL (end . spanA) (pSpan ^. end)
            . setL (gaps . spanA)
                     ((pSpan ^. gaps) `S.union` (qSpan ^. gaps))
+           -- UPDATE 01.09.2020: internal wrapping change
+           . setL callBackNodeA (getL callBackNodeP p <|> getL callBackNodeA q)
            $ q
 
     -- compute the estimated distance for the resulting state
@@ -1159,6 +1169,8 @@ trySubst p pw = void $ P.runListT $ do
     guard . not $ isSister' pDID dag
     -- UPDATE 20.02.202: make sure that `p` has ?ws == False
     guard . not $ getL ws p
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard . isNothing $ getL callBackNodeP p
     -- now, we need to choose the DAG node to search for
     (theDID, depCost) <- do
       -- take the `DID` of a leaf with the appropriate non-terminal
@@ -1245,6 +1257,9 @@ trySubst' q qw = void $ P.runListT $ do
     -- UPDATE 20.02.202: make sure that `p` has ?ws == False
     guard . not $ getL ws p
 
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard . isNothing $ getL callBackNodeP p
+
     -- verify that the substitution is OK w.r.t. the dependency info
     Just depCost <- lift $ omega (p ^. dagID) qDID
 
@@ -1293,6 +1308,10 @@ tryDeactivate q qw = void $ P.runListT $ do
 #ifdef DebugOn
   begTime <- liftIO $ Time.getCurrentTime
 #endif
+
+  -- UPDATE 01.09.2020: internal wrapping change
+  guard . isNothing $ getL callBackNodeA q
+
   -- sentLen <- length <$> RWS.asks inputSent
   dag <- RWS.gets (gramDAG . automat)
   -- (headCost, did) <- heads (getL state q)
@@ -1300,8 +1319,84 @@ tryDeactivate q qw = void $ P.runListT $ do
   let p = Passive
           { _dagID = did
           , _spanP = getL spanA q
-          -- , _isAdjoinedTo = False }
-          , _ws = DAG.isDNode did dag }
+          , _ws = DAG.isDNode did dag
+          , _callBackNodeP = Nothing }
+  let finalWeight = DuoWeight
+        { duoBeta = duoBeta qw -- + headCost
+        -- { duoBeta = duoBeta qw + headCost
+        , duoGap = duoGap qw }
+  -- lift $ pushPassive p finalWeight (Deactivate q headCost)
+  lift $ pushPassive p finalWeight (Deactivate q 0)
+#ifdef CheckMonotonic
+  totalQ <- lift . lift $ est2total qw <$> estimateDistA q
+  totalP <- lift . lift $ est2total finalWeight <$> estimateDistP p
+  when (totalP + epsilon < totalQ) $ do
+    P.liftIO . putStrLn $
+      "[DEACTIVATE: MONOTONICITY TEST FAILED] TAIL WEIGHT: " ++ show totalQ ++
+      ", HEAD WEIGHT: " ++ show totalP
+#endif
+#ifdef DebugOn
+  -- print logging information
+  hype <- RWS.get
+  liftIO $ do
+      endTime <- Time.getCurrentTime
+      putStr "[DE] " >> printActive q
+      putStr "  :  " >> printPassive p hype
+      putStr " #W  " >> print (duoBeta finalWeight)
+      putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+      putStr " ?R  " >> putStr (show $ DAG.isRoot (p ^. dagID) dag)
+                     >> putStrLn " (is the new item a root?)"
+      -- putStr " #E  " >> print estDis
+#endif
+  where
+    mkRoot node = case node of
+      O.NonTerm x -> NotFoot {notFootLabel=x, isSister=False}
+      O.Sister x  -> NotFoot {notFootLabel=x, isSister=True}
+      _ -> error "pushInduced: invalid root"
+    check (Just x) = x
+    check Nothing  = error "pushInduced: invalid DID"
+
+
+--------------------------------------------------
+-- DEACTIVATE PRIM
+--
+-- UPDATE 01.09.2020: new rule!
+--------------------------------------------------
+
+
+-- | Try to perform DEACTIVATE.
+tryDeactivatePrim
+  :: (SOrd t, SOrd n)
+  => Active n
+  -> DuoWeight
+  -> EarleyPipe n t ()
+tryDeactivatePrim q qw = void $ P.runListT $ do
+#ifdef DebugOn
+  begTime <- liftIO $ Time.getCurrentTime
+#endif
+
+  dag <- RWS.gets (gramDAG . automat)
+
+  -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  let mayCallBackNode = getL callBackNodeA q
+  guard $ isJust mayCallBackNode
+  let cbn = fromJust mayCallBackNode
+  when (DAG.isRoot cbn dag) $ error
+    "DE': callback node is a root"
+  -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  (_headCost, did) <- heads (getL state q)
+
+  -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  unless (DAG.isRoot did dag) $ error
+    "DE': mother of d-daughter not a root"
+  -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  let p = Passive
+          { _dagID = cbn
+          , _spanP = getL spanA q
+          , _ws = False
+          , _callBackNodeP = Nothing }
   let finalWeight = DuoWeight
         { duoBeta = duoBeta qw -- + headCost
         -- { duoBeta = duoBeta qw + headCost
@@ -1365,8 +1460,10 @@ trySisterAdjoin p pw = void $ P.runListT $ do
     -- make sure that `p` represents a sister tree
 --     Left root <- return pDID
     guard $ DAG.isRoot pDID dag && isSister' pDID dag
-    -- UPDATE 19.02.202: make sure that `p` has ?ws == False
+    -- UPDATE 19.02.2020: make sure that `p` has ?ws == False
     guard . not $ getL ws p
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP p)
     -- find active items which end where `p' begins and which have the
     -- corresponding LHS non-terminal
 --     (q, qw) <- plainRootEnd (notFootLabel root) (getL beg pSpan)
@@ -1437,6 +1534,12 @@ trySisterAdjoin' q qw = void $ P.runListT $ do
   -- sister trees.
   let sister = lhsNotFoot {isSister = True}
   (p, pw) <- provideBegIni' sister (q ^. spanA ^. end)
+  -- UPDATE 01.09.2020: make sure that `p` has ?ws == False
+  -- TODO: This was not here before, maybe `provideBegIni'` already takes cares
+  -- of this?
+  guard . not $ getL ws p
+  -- UPDATE 01.09.2020: internal wrapping change
+  guard $ isNothing (getL callBackNodeP p)
   -- check w.r.t. the dependency structure
 --   let anchorMap = anchorPos auto
 --       anchorMap' = anchorPos' auto
@@ -1503,6 +1606,8 @@ tryPredictWrapping p pw = void $ P.runListT $ do
     dag <- RWS.gets (gramDAG . automat)
     -- make sure that `p` has ?ws == True
     guard $ getL ws p
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP p)
     -- the underlying leaf map
     leafMap <- RWS.gets (leafDID  . automat)
     -- now, we need to choose the DAG node to search for
@@ -1511,6 +1616,8 @@ tryPredictWrapping p pw = void $ P.runListT $ do
     -- find active items which end where `p' begins and which
     -- expect the DAG node provided by `p'
     (q, qw) <- expectEnd theDID (getL beg pSpan)
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeA q)
     -- follow the DAG node
     (tranCost, j) <- follow (getL state q) theDID
     -- construct the resulting state
@@ -1565,6 +1672,9 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
     let dag = gramDAG auto
         leafMap = leafDID auto
 
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeA q)
+
     -- Learn what non-terminals `q` actually expects.
     (qDID, tranCost, j) <- elems (q ^. state)
 
@@ -1585,6 +1695,9 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
 
     -- make sure that `p` has ?ws == True
     guard $ getL ws p
+
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP p)
 
     -- construct the resulting state
     let pBeg = getL beg pSpan
@@ -1794,6 +1907,200 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
+
+--------------------------------------------------
+-- COMPLETE WRAPPING PRIM
+--
+-- UPDATE 01.09.2020: new rule!
+--------------------------------------------------
+
+
+-- | Wrap the tree represented by `p` over the fully parsed tree represented by
+-- `q`.
+tryCompleteWrappingPrim
+  :: (SOrd t, SOrd n)
+  => Passive n t
+  -> DuoWeight
+  -> EarleyPipe n t ()
+tryCompleteWrappingPrim q qw = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- liftIO $ Time.getCurrentTime
+#endif
+    -- let qLab = q ^. label
+    let qDID = q ^. dagID
+        qSpan = q ^. spanP
+    -- the underlying dag grammar
+    dag <- RWS.gets (gramDAG . automat)
+    parMap <- RWS.gets (dagParMap . automat)
+
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    -- make sure the node is *not* a root
+    guard . not $ DAG.isRoot qDID dag
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    -- NEW 16.06.2020: make sure `q` does not represent sister tree
+    guard . not $ isSister' qDID dag
+    -- for each available gap
+    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+    -- TODO: add desc
+    qNonTerm <- some (nonTerm' qDID dag)
+    -- take all passive items with a given span and a given
+    -- root non-terminal (IDs irrelevant)
+    (p, pw) <- rootSpan gapNT (gapBeg, gapEnd)
+    -- make sure that `p` has ?ws == True
+    guard $ getL ws p
+    -- verify the label of the parent
+    parIdSet <- some $ M.lookup (p ^. dagID) parMap
+    if (S.size parIdSet > 1)
+       then error "tryCompleteWrapping: d-daughter node with several parents"
+       else return ()
+    parID <- each (S.toList parIdSet)
+    -- TODO: implement line below in terms of `nonTerm'`?
+    parNonTerm <- some (labNonTerm =<< DAG.label parID dag)
+    guard $ qNonTerm == parNonTerm
+
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    -- make sure that the parent of the DNode is a root
+    guard $ DAG.isRoot parID dag
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    -- check the operation w.r.t. the dependency info
+    Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
+    -- calculate the new set of gaps
+    let newGaps = S.union (p ^. spanP ^. gaps)
+                . S.delete gap
+                $ qSpan ^. gaps
+    -- construct the resulting item
+    let p' = setL (spanP >>> beg) (qSpan ^. beg)
+           . setL (spanP >>> end) (qSpan ^. end)
+           . setL (spanP >>> gaps) newGaps
+           . setL ws False
+           -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+           . setL callBackNodeP (Just qDID)
+           -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+           $ p
+    -- calculate the resulting weights
+    let newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
+        -- newGap = duoGap qw
+        newGap = disjointUnion
+          (safeDelete gapBeg (duoGap qw))
+          (duoGap pw)
+        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
+    -- push the resulting state into the waiting queue
+    lift $ pushPassive p' newDuo (CompleteWrapping p q depCost)
+#ifdef CheckMonotonic
+    lift . lift $ testMono' "COMPLETE-WRAPPING" (p, pw) (q, qw) (p', newDuo)
+--     totalP <- lift . lift $ est2total pw <$> estimateDistP p
+--     totalQ <- lift . lift $ est2total qw <$> estimateDistP q
+--     totalQ' <- lift . lift $ est2total newDuo <$> estimateDistP p'
+--     let tails =  [totalP, totalQ]
+--     when (any (totalQ' + epsilon <) tails) $ do
+--       P.liftIO . putStrLn $
+--         "[COMPLETE-WRAPPING: MONOTONICITY TEST FAILED] TAILS: " ++ show tails ++
+--         ", HEAD: " ++ show totalQ'
+#endif
+#ifdef DebugOn
+    hype <- RWS.get
+    liftIO $ do
+        endTime <- Time.getCurrentTime
+        putStr "[C]  " >> printPassive q hype
+        putStr "  +  " >> printPassive p hype
+        putStr "  :  " >> printPassive p' hype
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
+
+
+-- | Alternative version of `tryCompleteWrapping`.
+tryCompleteWrappingPrim'
+  :: (SOrd t, SOrd n)
+  => Passive n t
+  -> DuoWeight
+  -> EarleyPipe n t ()
+tryCompleteWrappingPrim' p pw = void $ P.runListT $ do
+#ifdef DebugOn
+    begTime <- liftIO $ Time.getCurrentTime
+#endif
+    let pDID = p ^. dagID
+        pSpan = p ^. spanP
+
+    -- the underlying dag grammar
+    dag <- RWS.gets (gramDAG . automat)
+    parMap <- RWS.gets (dagParMap . automat)
+
+    -- make sure that `p` has ?ws == True
+    guard $ getL ws p
+
+    -- take all passive items with the corresponding gap
+    pNonTerm <- some (nonTerm' pDID dag)
+    let gap = (pSpan ^. beg, pSpan ^. beg, pNonTerm)
+    (q, qw) <- withGap gap
+
+    -- local names
+    let qDID = q ^. dagID
+        qSpan = q ^. spanP
+
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    -- make sure the node is *not* a root
+    guard . not $ DAG.isRoot qDID dag
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    -- NEW 16.06.2020: make sure `q` does not represent sister tree
+    guard . not $ isSister' qDID dag
+
+    -- determine q's non-terminal
+    qNonTerm <- some (nonTerm' qDID dag)
+
+    -- verify the label of the parent
+    parIdSet <- some $ M.lookup (p ^. dagID) parMap
+    if (S.size parIdSet > 1)
+       then error "tryCompleteWrapping': d-daughter node with several parents"
+       else return ()
+    parID <- each (S.toList parIdSet)
+    -- TODO: implement line below in terms of `nonTerm'`?
+    parNonTerm <- some (labNonTerm =<< DAG.label parID dag)
+    guard $ qNonTerm == parNonTerm
+
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    -- make sure that the parent of the DNode is a root
+    guard $ DAG.isRoot parID dag
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    -- check the operation w.r.t. the dependency info
+    Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
+    -- calculate the new set of gaps
+    let newGaps = S.union (p ^. spanP ^. gaps)
+                . S.delete gap
+                $ qSpan ^. gaps
+    -- construct the resulting item
+    let p' = setL (spanP >>> beg) (qSpan ^. beg)
+           . setL (spanP >>> end) (qSpan ^. end)
+           . setL (spanP >>> gaps) newGaps
+           . setL ws False
+           -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+           . setL callBackNodeP (Just qDID)
+           -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+           $ p
+    -- calculate the resulting weights
+    let newBeta = sumWeight [duoBeta pw, duoBeta qw, depCost]
+        newGap = disjointUnion
+          (safeDelete (pSpan ^. beg) (duoGap qw))
+          (duoGap pw)
+        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
+    -- push the resulting state into the waiting queue
+    lift $ pushPassive p' newDuo (CompleteWrapping p q depCost)
+
+#ifdef CheckMonotonic
+    lift . lift $ testMono' "COMPLETE-WRAPPING'" (p, pw) (q, qw) (p', newDuo)
+#endif
+#ifdef DebugOn
+    hype <- RWS.get
+    liftIO $ do
+        endTime <- Time.getCurrentTime
+        putStr "[C]  " >> printPassive q hype
+        putStr "  +  " >> printPassive p hype
+        putStr "  :  " >> printPassive p' hype
+        putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
+#endif
 
 ---------------------------
 -- Extracting Parsed Trees
@@ -2009,9 +2316,10 @@ earleyAutoGen =
             . gramAuto $ auto
       i    <- each [0 .. n - 1]
       let q = Active root Span
-              { _beg   = i
-              , _end   = i
-              , _gaps  = S.empty }
+                { _beg   = i
+                , _end   = i
+                , _gaps  = S.empty }
+                Nothing
       lift $ pushActive q (DuoWeight zeroWeight M.empty) Nothing
     -- the computation is performed as long as the waiting queue
     -- is non-empty.
@@ -2058,6 +2366,8 @@ step (ItemP p :-> e) = do
       , tryPredictWrapping
       , tryCompleteWrapping
       , tryCompleteWrapping'
+      , tryCompleteWrappingPrim
+      , tryCompleteWrappingPrim'
       -- , trySubstPS
       -- , tryAdjoinCont
       ]
@@ -2074,6 +2384,7 @@ step (ItemA p :-> e) = do
       [ tryScan
       , tryEmpty
       , tryDeactivate
+      , tryDeactivatePrim
       , trySubst'
       , tryPseudoSubst'
 --       , tryAdjoinInit'
