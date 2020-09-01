@@ -87,7 +87,17 @@ data Trav n t
         , _passMod  :: Passive n t
         -- ^ The modified item
         }
+    | CompleteWrappingPrim
+        { _passWrp  :: Passive n t
+        -- ^ The wrapping item
+        , _passMod  :: Passive n t
+        -- ^ The modified item
+        }
     | Deactivate
+        { _actArg   :: Active n
+        -- ^ The active argument of the action
+        }
+    | DeactivatePrim
         { _actArg   :: Active n
         -- ^ The active argument of the action
         }

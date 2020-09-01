@@ -52,7 +52,7 @@ module NLP.Partage.Earley.AutoAP
 
 import           Prelude hiding             (span, (.))
 import           Control.Applicative        ((<$>), (<|>))
-import           Control.Monad      (guard, void, unless) -- , when)
+import           Control.Monad      (guard, void, unless, when)
 import           Control.Monad.Trans.Class  (lift)
 -- import           Control.Monad.Trans.Maybe  (MaybeT (..))
 import qualified Control.Monad.RWS.Strict   as RWS
@@ -90,7 +90,7 @@ import qualified NLP.Partage.Tree.Other as O
 
 import           NLP.Partage.Earley.Base hiding (nonTerm)
 import qualified NLP.Partage.Earley.Base as Base
-import           NLP.Partage.Earley.Item hiding (printPassive)
+import           NLP.Partage.Earley.Item hiding (printPassive, printActive)
 import           NLP.Partage.Earley.ExtWeight
 import qualified NLP.Partage.Earley.Chart as Chart
 
@@ -120,10 +120,15 @@ printPassive :: (Show n) => Passive n t -> Hype n t -> IO ()
 printPassive p hype = Item.printPassive p (automat hype)
 
 
+-- | Print an active item.
+printActive :: (Show n) => Active n -> Hype n t -> IO ()
+printActive p hype = Item.printActive p (automat hype)
+
+
 -- | Print an item.
 printItem :: (Show n, Show t) => Item n t -> Hype n t -> IO ()
 printItem (ItemP p) h = printPassive p h
-printItem (ItemA p) _ = printActive p
+printItem (ItemA p) h = printActive p h
 
 
 -- | Priority of an active item.  Crucial for the algorithm --
@@ -712,10 +717,11 @@ tryScan p = void $ P.runListT $ do
     lift $ pushInduced q $ Scan p c
 #ifdef DebugOn
     -- print logging information
+    hype <- RWS.get
     lift . lift $ do
         endTime <- Time.getCurrentTime
-        putStr "[S]  " >> printActive p
-        putStr "  :  " >> printActive q
+        putStr "[S]  " >> printActive p hype
+        putStr "  :  " >> printActive q hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -736,10 +742,11 @@ tryEmpty p = void $ P.runListT $ do
     lift $ pushInduced q $ Empty p
 #ifdef DebugOn
     -- print logging information
+    hype <- RWS.get
     lift . lift $ do
         endTime <- Time.getCurrentTime
-        putStr "[E]  " >> printActive p
-        putStr "  :  " >> printActive q
+        putStr "[E]  " >> printActive p hype
+        putStr "  :  " >> printActive q hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -804,8 +811,8 @@ trySubst p = void $ P.runListT $ do
     lift . lift $ do
         endTime <- Time.getCurrentTime
         putStr "[U]  " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
+        putStr "  +  " >> printActive q hype
+        putStr "  :  " >> printActive q' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -1012,8 +1019,8 @@ trySisterAdjoin p = void $ P.runListT $ do
     lift . lift $ do
         endTime <- Time.getCurrentTime
         putStr "[I]  " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
+        putStr "  +  " >> printActive q hype
+        putStr "  :  " >> printActive q' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -1063,8 +1070,8 @@ tryPredictWrapping p = void $ P.runListT $ do
     lift . lift $ do
         endTime <- Time.getCurrentTime
         putStr "[P]  " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
+        putStr "  +  " >> printActive q hype
+        putStr "  :  " >> printActive q' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -1197,12 +1204,11 @@ tryCompleteWrappingPrim q = void $ P.runListT $ do
            . setL (spanP >>> gaps) newGaps
            . setL ws False
            -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-           . setL callBackNodeP (Just parID)
+           . setL callBackNodeP (Just qTrueDID)
            -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
            $ p
 
-    -- TODO: CompleteWrappingPrim
-    lift $ pushPassive p' $ error "CompleteWrappingPrim" -- CompleteWrapping q p
+    lift $ pushPassive p' $ CompleteWrappingPrim q p
 #ifdef DebugOn
     hype <- RWS.get
     lift . lift $ do
@@ -1250,7 +1256,7 @@ tryDeactivate p = void $ P.runListT $ do
   hype <- RWS.get
   lift . lift $ do
       endTime <- Time.getCurrentTime
-      putStr "[D]  " >> printActive p
+      putStr "[D]  " >> printActive p hype
       putStr "  :  " >> printPassive q hype
       putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
@@ -1282,8 +1288,8 @@ tryDeactivatePrim p = void $ P.runListT $ do
   let mayCallBackNode = getL callBackNodeA p
   guard $ isJust mayCallBackNode
   let cbn = fromJust mayCallBackNode
-  unless (DAG.isRoot cbn dag) $ error
-    "DE': callback node not a root"
+  when (DAG.isRoot cbn dag) $ error
+    "DE': callback node is a root"
   -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   did <- heads (getL state p)
@@ -1293,22 +1299,20 @@ tryDeactivatePrim p = void $ P.runListT $ do
     "DE': mother of d-daughter not a root"
   -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  let q = check $ do
-            x <- mkRoot <$> DAG.label cbn dag
-            return $ Passive
-              { _dagID = Left x
-              , _spanP = getL spanA p
-              , _ws = False
-              , _callBackNodeP = Nothing }
+  let q = Passive
+            { _dagID = Right cbn
+            , _spanP = getL spanA p
+            , _ws = False
+            , _callBackNodeP = Nothing }
 
-  lift $ pushPassive q $ error "DeactivatePrim" -- (Deactivate p)
+  lift $ pushPassive q $ DeactivatePrim p
 
 #ifdef DebugOn
   -- print logging information
   hype <- RWS.get
   lift . lift $ do
       endTime <- Time.getCurrentTime
-      putStr "[D]  " >> printActive p
+      putStr "[D']  " >> printActive p hype
       putStr "  :  " >> printPassive q hype
       putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
@@ -1342,6 +1346,7 @@ step (ItemP p :-> e) = do
       , trySisterAdjoin
       , tryPredictWrapping
       , tryCompleteWrapping
+      , tryCompleteWrappingPrim
       ]
     savePassive p $ prioTrav e
 step (ItemA p :-> e) = do
@@ -1349,6 +1354,7 @@ step (ItemA p :-> e) = do
       [ tryScan
       , tryEmpty
       , tryDeactivate
+      , tryDeactivatePrim
       ]
     saveActive p (prioTrav e)
 

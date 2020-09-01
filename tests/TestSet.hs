@@ -1267,6 +1267,79 @@ gram17Tests =
 
 
 ---------------------------------------------------------------------
+-- Grammar 18 (Internal Wrapping)
+---------------------------------------------------------------------
+
+
+-- mkGram18 :: [(OTree, Weight)]
+-- mkGram18 = map (,1)
+--   [keep, wondering, this]
+--   where
+--     term' t = term . Just $ Term t Nothing
+--     keep =
+--       node "SENTENCE"
+--       [ node "CLAUSE"
+--         [ node "CORE"
+--           [ node "NUC"
+--             [ node "NUC"
+--               [ node "V" [term' "keep"]
+--               ]
+--             , leaf "NUC"
+--             ]
+--           ]
+--         ]
+--       ]
+--     wondering =
+--       node "CLAUSE"
+--       [ dnode "NUC"
+--         [ node "V" [term' "wondering"]
+--         ]
+--       , leaf "NP"
+--       ]
+--     this =
+--       node "NP" [term' "this"]
+
+
+mkGram18 :: [(OTree, Weight)]
+mkGram18 = map (,1)
+  [we, keep, wondering, this]
+  where
+    term' t = term . Just $ Term t Nothing
+    keep =
+      node "SENT"
+      [ node "CLAUSE"
+        [ node "NUC"
+          [ node "V" [term' "keep"]
+          ]
+        , leaf "NUC"
+        ]
+      ]
+    wondering =
+      node "CLAUSE"
+      [ leaf "NP"
+      , dnode "NUC"
+        [ node "V" [term' "wondering"]
+        ]
+      , leaf "NP"
+      ]
+    we =
+      node "NP" [term' "we"]
+    this =
+      node "NP" [term' "this"]
+
+
+-- | The purpose of this test is to test the inversed wrapping.
+gram18Tests :: [Test]
+gram18Tests =
+    [ test "SENT" ("we keep wondering this") Yes
+    ]
+    where
+      test start sent res = Test start (toks sent) M.empty res
+      toks = map tok . T.words
+      tok t = Term t Nothing
+
+
+---------------------------------------------------------------------
 -- Resources
 ---------------------------------------------------------------------
 
@@ -1274,18 +1347,19 @@ gram17Tests =
 -- | The set of grammar/test suite pairs.
 testSuite :: [([(OTree, Weight)], [Test])]
 testSuite =
-  [ (mkGram5, gram5Tests)
-  , (mkGram6, gram6Tests)
-  , (mkGram7, gram7Tests)
-  , (mkGram8, gram8Tests)
-  , (mkGram9, gram9Tests)
-  , (mkGram10, gram10Tests)
-  , (mkGram12, gram12Tests)
-  , (mkGram13, gram13Tests)
-  , (mkGram14, gram14Tests)
-  , (mkGram15, gram15Tests)
-  , (mkGram16, gram16Tests)
-  , (mkGram17, gram17Tests)
+--   [ (mkGram5, gram5Tests)
+--   , (mkGram6, gram6Tests)
+--   , (mkGram7, gram7Tests)
+--   , (mkGram8, gram8Tests)
+--   , (mkGram9, gram9Tests)
+--   , (mkGram10, gram10Tests)
+--   , (mkGram12, gram12Tests)
+--   , (mkGram13, gram13Tests)
+--   , (mkGram14, gram14Tests)
+--   , (mkGram15, gram15Tests)
+--   , (mkGram16, gram16Tests)
+--   , (mkGram17, gram17Tests)
+  [ (mkGram18, gram18Tests)
   ]
 
 

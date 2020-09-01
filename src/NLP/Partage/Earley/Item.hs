@@ -124,12 +124,18 @@ printSpan span = do
 
 
 -- | Print an active item.
-printActive :: (Show n) => Active n -> IO ()
-printActive p = do
+printActive :: (Show n) => Active n -> Auto n t -> IO ()
+printActive p auto = do
     putStr "("
     putStr . show $ getL state p
     putStr ", "
     printSpan $ getL spanA p
+    putStr ", "
+    putStr $ case getL callBackNodeA p of
+        Nothing -> "--"
+        Just did   ->
+          show (DAG.unDID did) ++ "[" ++
+          show (nonTerm (Right did) auto) ++ "]"
     putStrLn ")"
 
 
@@ -147,5 +153,11 @@ printPassive p auto = do
           show (nonTerm (Right did) auto) ++ "]"
     putStr ", "
     printSpan $ getL spanP p
+    putStr ", "
+    putStr $ case getL callBackNodeP p of
+        Nothing -> "--"
+        Just did   ->
+          show (DAG.unDID did) ++ "[" ++
+          show (nonTerm (Right did) auto) ++ "]"
     putStrLn ")"
 -- #endif
