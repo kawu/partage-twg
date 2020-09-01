@@ -121,10 +121,24 @@ data Trav n t
         , _weight   :: Weight
         -- ^ The traversal weight
         }
+    | CompleteWrappingPrim
+        { passWrp  :: Passive n t
+        -- ^ The wrapping item
+        , passMod  :: Passive n t
+        -- ^ The modified item
+        , _weight  :: Weight
+        -- ^ The traversal weight
+        }
     | Deactivate
         { actArg   :: Active n
         -- ^ The active argument of the action
-        , _weight :: Weight
+        , _weight  :: Weight
+        -- ^ The traversal weight
+        }
+    | DeactivatePrim
+        { actArg   :: Active n
+        -- ^ The active argument of the action
+        , _weight  :: Weight
         -- ^ The traversal weight
         }
     deriving (Show, Eq, Ord)

@@ -1402,7 +1402,7 @@ tryDeactivatePrim q qw = void $ P.runListT $ do
         -- { duoBeta = duoBeta qw + headCost
         , duoGap = duoGap qw }
   -- lift $ pushPassive p finalWeight (Deactivate q headCost)
-  lift $ pushPassive p finalWeight (Deactivate q 0)
+  lift $ pushPassive p finalWeight (DeactivatePrim q 0)
 #ifdef CheckMonotonic
   totalQ <- lift . lift $ est2total qw <$> estimateDistA q
   totalP <- lift . lift $ est2total finalWeight <$> estimateDistP p
@@ -1987,7 +1987,7 @@ tryCompleteWrappingPrim q qw = void $ P.runListT $ do
           (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
-    lift $ pushPassive p' newDuo (CompleteWrapping p q depCost)
+    lift $ pushPassive p' newDuo (CompleteWrappingPrim p q depCost)
 #ifdef CheckMonotonic
     lift . lift $ testMono' "COMPLETE-WRAPPING" (p, pw) (q, qw) (p', newDuo)
 --     totalP <- lift . lift $ est2total pw <$> estimateDistP p
@@ -2087,7 +2087,7 @@ tryCompleteWrappingPrim' p pw = void $ P.runListT $ do
           (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
-    lift $ pushPassive p' newDuo (CompleteWrapping p q depCost)
+    lift $ pushPassive p' newDuo (CompleteWrappingPrim p q depCost)
 
 #ifdef CheckMonotonic
     lift . lift $ testMono' "COMPLETE-WRAPPING'" (p, pw) (q, qw) (p', newDuo)

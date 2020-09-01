@@ -575,7 +575,14 @@ fromPassiveTrav p trav hype = case trav of
     [ wrapTree wrp mod
     | wrp <- passiveDerivs qw
     , mod <- passiveDerivs qm ]
+  A.CompleteWrappingPrim qw qm _ ->
+    [ wrapTree wrp mod
+    | wrp <- passiveDerivs qw
+    , mod <- passiveDerivs qm ]
   A.Deactivate q _ ->
+    [ mkTree hype p ts
+    | ts <- activeDerivs q ]
+  A.DeactivatePrim q _ ->
     [ mkTree hype p ts
     | ts <- activeDerivs q ]
   _ ->
@@ -858,11 +865,18 @@ fromPassiveTravGenW minBy p trav hype =
       (wrp, w) <- passiveDerivs qw
       (mod, w') <- passiveDerivs qm
       return (wrapTree wrp mod, w + w')
+    A.CompleteWrappingPrim qw qm _ -> do
+      (wrp, w) <- passiveDerivs qw
+      (mod, w') <- passiveDerivs qm
+      return (wrapTree wrp mod, w + w')
     A.Deactivate q _ -> do
       (ts, w) <- activeDerivs q
       return (mkTree hype p ts, w)
+    A.DeactivatePrim q _ -> do
+      (ts, w) <- activeDerivs q
+      return (mkTree hype p ts, w)
     _ ->
-      error "Deriv.fromPassiveTrav: impossible happened"
+      error "Deriv.fromPassiveTravGenW: impossible happened"
   where
     passiveDerivs = flip (fromPassiveGenW minBy) hype
     activeDerivs  = flip (fromActiveGenW minBy)  hype
