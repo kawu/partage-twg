@@ -1006,7 +1006,7 @@ showParse deriv
       let posList = map A.position (catMaybes $ O.project t) in
       if posList == List.sort posList
          then t
-         else error "partage.renderParse: words not in order!"
+         else error "partage.showParse: words not in order!"
 
 
 --------------------------------------------------

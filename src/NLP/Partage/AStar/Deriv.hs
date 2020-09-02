@@ -228,8 +228,9 @@ applyDeriv mod hed
       error "Deriv.applyDeriv: isSister should not be possible!"
       -- applySister pos mod hed
   -- | otherwise = applyAdj mod hed
-  | isDNodeTree mod = applyInternalWrapping mod hed
-  | otherwise = applyWrapping hed mod
+  | isDNodeTree hed = applyWrapping hed mod
+  -- | hasDNodeDaughter mod = applyInternalWrapping mod hed
+  | otherwise = applyInternalWrapping mod hed
 --   | otherwise =
 --       error "Deriv.applyDeriv: impossible happened!"
   where
@@ -238,7 +239,11 @@ applyDeriv mod hed
       case R.rootLabel t of
         O.Sister _ -> True
         _ -> False
-    isDNodeTree = any isDNode . map R.rootLabel . R.subForest
+    isDNodeTree t =
+      case R.rootLabel t of
+        O.DNode _ -> True
+        _ -> False
+    -- hasDNodeDaughter = any isDNode . map R.rootLabel . R.subForest
 
 
 -- | Apply substitution
