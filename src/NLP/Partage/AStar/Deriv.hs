@@ -358,6 +358,23 @@ applyWrapping wrp mod =
 --------------------------------------------------
 
 
+-- | Construct a leaf tree with modifications and no direct subtrees.
+mkInternalWrappingLeaf
+  :: A.Hype n t
+  -> A.Passive n t
+  -> [Deriv UnNorm n (Tok t)]
+  -> Deriv UnNorm n (Tok t)
+mkInternalWrappingLeaf hype p ts = flip R.Node [] $ DerivNode
+  { node = O.NonTerm labNT
+  -- TODO: is `reverse` below necessary?  Shouldn't `ts` be also a
+  -- single-element list?
+  , modif = [modifTree]
+  } where
+    labNT = Item.nonTerm (p ^. Item.dagID) (A.automat hype)
+    modifTree = R.Node
+      { R.rootLabel = only $ O.NonTerm labNT
+      , R.subForest = reverse ts }
+
 -- | Construct a derivation tree on the basis of the underlying passive
 -- item, current child derivation and previous children derivations.
 mkTree
@@ -383,7 +400,7 @@ unTree hype p deriv = do
 
 -- | Construct a derivation node with no modifier.
 only :: O.Node n (Maybe t) -> DerivNode UnNorm n t
-only x = DerivNode {node = x, modif =  []}
+only x = DerivNode {node = x, modif = []}
 
 -- Below follow several constructors which allow to build non-modified nodes.
 
@@ -582,9 +599,10 @@ fromPassiveTrav p trav hype = case trav of
   A.Deactivate q _ ->
     [ mkTree hype p ts
     | ts <- activeDerivs q ]
-  A.DeactivatePrim q _ ->
-    [ mkTree hype p ts
-    | ts <- activeDerivs q ]
+--  NOTE: implementation below obsolete (see `fromPassiveTravGenW`)
+--   A.DeactivatePrim q _ ->
+--     [ mkTree hype p ts
+--     | ts <- activeDerivs q ]
   _ ->
     error "Deriv.fromPassiveTrav: impossible happened"
   where
@@ -874,7 +892,8 @@ fromPassiveTravGenW minBy p trav hype =
       return (mkTree hype p ts, w)
     A.DeactivatePrim q _ -> do
       (ts, w) <- activeDerivs q
-      return (mkTree hype p ts, w)
+      -- return (mkTree hype p ts, w)
+      return (mkInternalWrappingLeaf hype p ts, w)
     _ ->
       error "Deriv.fromPassiveTravGenW: impossible happened"
   where
