@@ -1964,8 +1964,12 @@ tryCompleteWrappingPrim q qw = void $ P.runListT $ do
     guard $ DAG.isRoot parID dag
     -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     -- check the operation w.r.t. the dependency info
-    Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
+    -- UPDATE 02.09.2020: link in the internal wrapping is reversed
+    Just depCost <- lift $ omega (p ^. dagID) (q ^. dagID)
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     -- calculate the new set of gaps
     let newGaps = S.union (p ^. spanP ^. gaps)
                 . S.delete gap
@@ -2065,8 +2069,12 @@ tryCompleteWrappingPrim' p pw = void $ P.runListT $ do
     guard $ DAG.isRoot parID dag
     -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     -- check the operation w.r.t. the dependency info
-    Just depCost <- lift $ omega (q ^. dagID) (p ^. dagID)
+    -- UPDATE 02.09.2020: link in the internal wrapping is reversed
+    Just depCost <- lift $ omega (p ^. dagID) (q ^. dagID)
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     -- calculate the new set of gaps
     let newGaps = S.union (p ^. spanP ^. gaps)
                 . S.delete gap
