@@ -1767,8 +1767,14 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
     guard . not $ isSister' qDID dag
     -- UPDATE 01.09.2020: internal wrapping change
     guard $ isNothing (getL callBackNodeP q)
-    -- for each available gap
-    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--     -- for each available gap
+--     gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+    -- UPDATE 02.09.2020: consider the smallest gap only!
+    gap@(gapBeg, gapEnd, gapNT) <- each . maybeToList . S.lookupMin $ qSpan ^. gaps
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     -- TODO: add desc
     qNonTerm <- some (nonTerm' qDID dag)
     -- take all passive items with a given span and a given
@@ -1950,8 +1956,14 @@ tryCompleteWrappingPrim q qw = void $ P.runListT $ do
 
     -- NEW 16.06.2020: make sure `q` does not represent sister tree
     guard . not $ isSister' qDID dag
-    -- for each available gap
-    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--     -- for each available gap
+--     gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+    -- UPDATE 02.09.2020: consider the smallest gap only!
+    gap@(gapBeg, gapEnd, gapNT) <- each . maybeToList . S.lookupMin $ qSpan ^. gaps
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     -- TODO: add desc
     qNonTerm <- some (nonTerm' qDID dag)
     -- take all passive items with a given span and a given
