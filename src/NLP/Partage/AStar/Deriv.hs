@@ -292,7 +292,7 @@ applyWrapping
     -- ^ Tree wrapped over
   -> O.Tree n (Maybe t)
 applyWrapping wrp mod =
-  markDNode $ O.replaceSlot' wrp mod
+  markDNode $ O.replaceSlot' (unmarkDNode wrp) mod
   where
     markDNode (R.Node x ts) =
       flip R.Node ts $
@@ -304,8 +304,11 @@ applyWrapping wrp mod =
             error "node already marked as Sister"
           O.Term t ->
             error "cannot mark terminal as DNode"
---     rmRoot (R.Node x [t]) = t
---     rmRoot _ = error "cannot remove the root without getting a forest!"
+    unmarkDNode (R.Node x ts) =
+      flip R.Node ts $
+        case x of
+          O.DNode nt -> O.NonTerm nt
+          _ -> error "node not marked as DNode"
 
 
 -- | Apply internal wrapping
@@ -319,13 +322,18 @@ applyInternalWrapping
 applyInternalWrapping wrp
   = addOnRight right
   . addOnLeft left
-  . O.replaceSlot' wrp'
+  . O.replaceSlot' (unmarkDNode wrp')
   where
     left  = takeUntil (isDNode . R.rootLabel) (R.subForest wrp)
     right = takeAfter (isDNode . R.rootLabel) (R.subForest wrp)
     wrp'  = filter (isDNode . R.rootLabel) (R.subForest wrp) !! 0
     addOnLeft xs (R.Node x ts) = R.Node x (xs ++ ts)
     addOnRight xs (R.Node x ts) = R.Node x (ts ++ xs)
+    unmarkDNode (R.Node x ts) =
+      flip R.Node ts $
+        case x of
+          O.DNode nt -> O.NonTerm nt
+          _ -> error "node not marked as DNode"
 
 
 -- -- | Split the forest into two separate parts, on two sides of the given
@@ -698,10 +706,9 @@ fromPassiveTrav p trav hype = case trav of
   A.Deactivate q _ ->
     [ mkTree hype p ts
     | ts <- activeDerivs q ]
---  NOTE: implementation below obsolete (see `fromPassiveTravGenW`)
---   A.DeactivatePrim q _ ->
---     [ mkTree hype p ts
---     | ts <- activeDerivs q ]
+  A.DeactivatePrim q _ ->
+    [ mkInternalWrapping hype p ts
+    | ts <- activeDerivs q ]
   _ ->
     error "Deriv.fromPassiveTrav: impossible happened"
   where

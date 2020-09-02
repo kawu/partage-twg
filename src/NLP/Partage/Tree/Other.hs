@@ -226,8 +226,25 @@ replaceSlot plug tree =
     go (T.Branch x ts) = T.Branch x <$> mapM go ts
 
 
+-- -- | Version of `replaceSlot` working on a different representation of trees.
+-- NOTE 02.09.2020: This version is lossy, markers (DNode, Sister) are not
+-- preserved.
+-- replaceSlot' :: Tree n t -> Tree n t -> Tree n t
+-- replaceSlot' plug tree =
+--   unTree $ replaceSlot (mkTree plug) (mkTree tree)
+
+
 -- | Version of `replaceSlot` working on a different representation of trees.
 replaceSlot' :: Tree n t -> Tree n t -> Tree n t
 replaceSlot' plug tree =
-  unTree $ replaceSlot (mkTree plug) (mkTree tree)
-
+  State.evalState (go tree) True
+  where
+    go t@(R.Node (NonTerm x) []) = do
+      flag <- State.get
+      if flag
+         then do
+           State.put False
+           return plug
+         else do
+           return t
+    go (R.Node nd ts) = R.Node nd <$> mapM go ts
