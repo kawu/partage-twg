@@ -1167,7 +1167,7 @@ trySubst p pw = void $ P.runListT $ do
     guard $ DAG.isRoot pDID dag
     -- make sure that `p` does not represent sister tree
     guard . not $ isSister' pDID dag
-    -- UPDATE 20.02.202: make sure that `p` has ?ws == False
+    -- UPDATE 20.02.2020: make sure that `p` has ?ws == False
     guard . not $ getL ws p
     -- UPDATE 01.09.2020: internal wrapping change
     guard . isNothing $ getL callBackNodeP p
@@ -1254,7 +1254,7 @@ trySubst' q qw = void $ P.runListT $ do
     -- make sure that `p` does not represent a sister tree
     guard $ not (isSister' pDID dag)
 
-    -- UPDATE 20.02.202: make sure that `p` has ?ws == False
+    -- UPDATE 20.02.2020: make sure that `p` has ?ws == False
     guard . not $ getL ws p
 
     -- UPDATE 01.09.2020: internal wrapping change
@@ -1765,6 +1765,8 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
     guard $ DAG.isRoot qDID dag
     -- NEW 16.06.2020: make sure `q` does not represent sister tree
     guard . not $ isSister' qDID dag
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP q)
     -- for each available gap
     gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
     -- TODO: add desc
@@ -1774,6 +1776,8 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
     (p, pw) <- rootSpan gapNT (gapBeg, gapEnd)
     -- make sure that `p` has ?ws == True
     guard $ getL ws p
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP p)
     -- verify the label of the parent
     parIdSet <- some $ M.lookup (p ^. dagID) parMap
     if (S.size parIdSet > 1)
@@ -1846,6 +1850,9 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
     -- make sure that `p` has ?ws == True
     guard $ getL ws p
 
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP p)
+
     -- take all passive items with the corresponding gap
     pNonTerm <- some (nonTerm' pDID dag)
     let gap = (pSpan ^. beg, pSpan ^. beg, pNonTerm)
@@ -1859,6 +1866,9 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
     guard $ DAG.isRoot qDID dag
     -- NEW 16.06.2020: make sure `q` does not represent sister tree
     guard . not $ isSister' qDID dag
+
+    -- UPDATE 01.09.2020: internal wrapping change
+    guard $ isNothing (getL callBackNodeP q)
 
     -- determine q's non-terminal
     qNonTerm <- some (nonTerm' qDID dag)
