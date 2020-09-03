@@ -46,7 +46,7 @@ import           NLP.Partage.AStar.Base (Pos)
 import           NLP.Partage.DAG        (DID)
 import qualified NLP.Partage.DAG as DAG
 
-import           NLP.Partage.AStar.Base (nonTerm', isSister')
+import           NLP.Partage.AStar.Base (nonTerm', isSister', isDNode')
 import           NLP.Partage.AStar.Auto (Auto (..))
 
 
@@ -119,12 +119,18 @@ printSpan span = do
 
 
 -- | Print an active item.
-printActive :: (Show n) => Active n -> IO ()
-printActive p = do
+printActive :: (Show n) => Active n -> Auto n t -> IO ()
+printActive p auto = do
     putStr "("
     putStr . show $ getL state p
     putStr ", "
     printSpan $ getL spanA p
+    putStr ", "
+    putStr $ case getL callBackNodeA p of
+        Nothing -> "--"
+        Just did   ->
+          show (DAG.unDID did) ++ "[" ++
+          show (nonTerm did auto) ++ "]"
     putStrLn ")"
 
 
@@ -141,7 +147,17 @@ printPassive p auto = do
     putStr ", "
     putStr $ "sister=" ++ show (isSister' did (gramDAG auto))
     putStr ", "
+    putStr $ "dnode=" ++ show (isDNode' did (gramDAG auto))
+    putStr ", "
     printSpan $ getL spanP p
+    putStr ", "
+    putStr $ "ws=" ++ show (getL ws p)
+    putStr ", "
+    putStr $ case getL callBackNodeP p of
+        Nothing -> "--"
+        Just did   ->
+          show (DAG.unDID did) ++ "[" ++
+          show (nonTerm did auto) ++ "]"
     putStrLn ")"
 -- #endif
 

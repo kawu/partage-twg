@@ -830,6 +830,10 @@ travWeight trav h =
     -- A.Adjoin qa qm _ -> passiveWeight qa h + passiveWeight qm h
     A.CompleteWrapping qw qm _ -> passiveWeight qw h + passiveWeight qm h
     A.Deactivate q _ -> activeWeight q h
+
+    -- NEW 03.09.2020:
+    A.CompleteWrappingPrim qw qm _ -> passiveWeight qw h + passiveWeight qm h
+    A.DeactivatePrim q _ -> activeWeight q h
     _ -> error "travWeight: cul-de-sac"
 
 

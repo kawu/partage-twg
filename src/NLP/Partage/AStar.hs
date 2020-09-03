@@ -142,7 +142,7 @@ import qualified NLP.Partage.AStar.Heuristic as H
 
 import           NLP.Partage.AStar.Base -- hiding (nonTerm)
 import qualified NLP.Partage.AStar.Base as Base
-import           NLP.Partage.AStar.Item hiding (printPassive)
+import           NLP.Partage.AStar.Item hiding (printPassive, printActive)
 import qualified NLP.Partage.AStar.Item as Item
 import           NLP.Partage.AStar.ExtWeight
 import qualified NLP.Partage.AStar.Chart as Chart
@@ -176,9 +176,14 @@ printPassive p hype = Item.printPassive p (automat hype)
 
 
 -- | Print an active item.
+printActive :: (Show n, Show t) => Active n -> Hype n t -> IO ()
+printActive p hype = Item.printActive p (automat hype)
+
+
+-- | Print an active item.
 printItem :: (Show n, Show t) => Item n t -> Hype n t -> IO ()
 printItem (ItemP p) h = printPassive p h
-printItem (ItemA p) _ = printActive p
+printItem (ItemA p) h = printActive p h
 -- #endif
 
 
@@ -530,8 +535,10 @@ pushActive p newWeight newTrav = do
   where
     newWait = Q.insertWith joinExtWeight (ItemA p)
 #ifdef DebugOn
-    track estWeight = liftIO $ do
-        putStr ">A>  " >> printActive p
+    track estWeight = do
+      hype <- RWS.get
+      liftIO $ do
+        putStr ">A>  " >> printActive p hype
         putStr " :>  " >> print (newWeight, estWeight)
 #else
     track _ = return ()
@@ -870,10 +877,11 @@ tryScan p duo = void $ P.runListT $ do
 #endif
 #ifdef DebugOn
   -- print logging information
+  hype <- RWS.get
   liftIO $ do
       endTime <- Time.getCurrentTime
-      putStr "[S]  " >> printActive p
-      putStr "  :  " >> printActive q
+      putStr "[S]  " >> printActive p hype
+      putStr "  :  " >> printActive q hype
       putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
       putStr " #W  " >> print newBeta
       -- putStr " #E  " >> print estDist
@@ -915,10 +923,11 @@ tryEmpty p duo = void $ P.runListT $ do
 #endif
 #ifdef DebugOn
   -- print logging information
+  hype <- RWS.get
   liftIO $ do
       endTime <- Time.getCurrentTime
-      putStr "[E]  " >> printActive p
-      putStr "  :  " >> printActive q
+      putStr "[E]  " >> printActive p hype
+      putStr "  :  " >> printActive q hype
       putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
       putStr " #W  " >> print newBeta
       -- putStr " #E  " >> print estDist
@@ -1058,8 +1067,8 @@ tryPseudoSubst p pw = void $ P.runListT $ do
     liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[?]  " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
+        putStr "  +  " >> printActive q hype
+        putStr "  :  " >> printActive q' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
         putStr " #W  " >> print newBeta
 #endif
@@ -1128,9 +1137,9 @@ tryPseudoSubst' q qw = void $ P.runListT $ do
     hype <- RWS.get
     liftIO $ do
         endTime <- Time.getCurrentTime
-        putStr "[?'] " >> printActive q
+        putStr "[?'] " >> printActive q hype
         putStr "  +  " >> printPassive p hype
-        putStr "  :  " >> printActive q'
+        putStr "  :  " >> printActive q' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
         putStr " #W  " >> print newBeta
         -- putStr " #E  " >> print estDist
@@ -1204,8 +1213,8 @@ trySubst p pw = void $ P.runListT $ do
     liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[U]  " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
+        putStr "  +  " >> printActive q hype
+        putStr "  :  " >> printActive q' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
         putStr " #W  " >> print newBeta
         -- putStr " #E  " >> print estDist
@@ -1284,9 +1293,9 @@ trySubst' q qw = void $ P.runListT $ do
     hype <- RWS.get
     liftIO $ do
         endTime <- Time.getCurrentTime
-        putStr "[U'] " >> printActive q
+        putStr "[U'] " >> printActive q hype
         putStr "  +  " >> printPassive p hype
-        putStr "  :  " >> printActive q'
+        putStr "  :  " >> printActive q' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
         putStr " #W  " >> print newBeta
         -- putStr " #E  " >> print estDist
@@ -1340,7 +1349,7 @@ tryDeactivate q qw = void $ P.runListT $ do
   hype <- RWS.get
   liftIO $ do
       endTime <- Time.getCurrentTime
-      putStr "[DE] " >> printActive q
+      putStr "[DE] " >> printActive q hype
       putStr "  :  " >> printPassive p hype
       putStr " #W  " >> print (duoBeta finalWeight)
       putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
@@ -1416,7 +1425,7 @@ tryDeactivatePrim q qw = void $ P.runListT $ do
   hype <- RWS.get
   liftIO $ do
       endTime <- Time.getCurrentTime
-      putStr "[DE] " >> printActive q
+      putStr "[D'] " >> printActive q hype
       putStr "  :  " >> printPassive p hype
       putStr " #W  " >> print (duoBeta finalWeight)
       putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
@@ -1504,8 +1513,8 @@ trySisterAdjoin p pw = void $ P.runListT $ do
     liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[I]  " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
+        putStr "  +  " >> printActive q hype
+        putStr "  :  " >> printActive q' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -1577,8 +1586,8 @@ trySisterAdjoin' q qw = void $ P.runListT $ do
   liftIO $ do
       endTime <- Time.getCurrentTime
       putStr "[I'] " >> printPassive p hype
-      putStr "  +  " >> printActive q
-      putStr "  :  " >> printActive q'
+      putStr "  +  " >> printActive q hype
+      putStr "  :  " >> printActive q' hype
       putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -1650,8 +1659,8 @@ tryPredictWrapping p pw = void $ P.runListT $ do
     liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[P]  " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
+        putStr "  +  " >> printActive q hype
+        putStr "  :  " >> printActive q' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -1731,8 +1740,8 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
     liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[P'] " >> printPassive p hype
-        putStr "  +  " >> printActive q
-        putStr "  :  " >> printActive q'
+        putStr "  +  " >> printActive q hype
+        putStr "  :  " >> printActive q' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
@@ -1769,10 +1778,10 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
     guard $ isNothing (getL callBackNodeP q)
 
     -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
---     -- for each available gap
---     gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
-    -- UPDATE 02.09.2020: consider the smallest gap only!
-    gap@(gapBeg, gapEnd, gapNT) <- each . maybeToList . S.lookupMin $ qSpan ^. gaps
+    -- for each available gap
+    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+--     -- UPDATE 02.09.2020: consider the smallest gap only!
+--     gap@(gapBeg, gapEnd, gapNT) <- each . maybeToList . S.lookupMin $ qSpan ^. gaps
     -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     -- TODO: add desc
@@ -1861,7 +1870,7 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
 
     -- take all passive items with the corresponding gap
     pNonTerm <- some (nonTerm' pDID dag)
-    let gap = (pSpan ^. beg, pSpan ^. beg, pNonTerm)
+    let gap = (pSpan ^. beg, pSpan ^. end, pNonTerm)
     (q, qw) <- withGap gap
 
     -- local names
@@ -1917,7 +1926,7 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
     hype <- RWS.get
     liftIO $ do
         endTime <- Time.getCurrentTime
-        putStr "[C]  " >> printPassive q hype
+        putStr "[C'] " >> printPassive q hype
         putStr "  +  " >> printPassive p hype
         putStr "  :  " >> printPassive p' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
@@ -1958,10 +1967,10 @@ tryCompleteWrappingPrim q qw = void $ P.runListT $ do
     guard . not $ isSister' qDID dag
 
     -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
---     -- for each available gap
---     gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
-    -- UPDATE 02.09.2020: consider the smallest gap only!
-    gap@(gapBeg, gapEnd, gapNT) <- each . maybeToList . S.lookupMin $ qSpan ^. gaps
+    -- for each available gap
+    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
+--     -- UPDATE 02.09.2020: consider the smallest gap only!
+--     gap@(gapBeg, gapEnd, gapNT) <- each . maybeToList . S.lookupMin $ qSpan ^. gaps
     -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     -- TODO: add desc
@@ -2029,7 +2038,7 @@ tryCompleteWrappingPrim q qw = void $ P.runListT $ do
     hype <- RWS.get
     liftIO $ do
         endTime <- Time.getCurrentTime
-        putStr "[C]  " >> printPassive q hype
+        putStr "[R]  " >> printPassive q hype
         putStr "  +  " >> printPassive p hype
         putStr "  :  " >> printPassive p' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
@@ -2058,7 +2067,8 @@ tryCompleteWrappingPrim' p pw = void $ P.runListT $ do
 
     -- take all passive items with the corresponding gap
     pNonTerm <- some (nonTerm' pDID dag)
-    let gap = (pSpan ^. beg, pSpan ^. beg, pNonTerm)
+
+    let gap = (pSpan ^. beg, pSpan ^. end, pNonTerm)
     (q, qw) <- withGap gap
 
     -- local names
@@ -2126,7 +2136,7 @@ tryCompleteWrappingPrim' p pw = void $ P.runListT $ do
     hype <- RWS.get
     liftIO $ do
         endTime <- Time.getCurrentTime
-        putStr "[C]  " >> printPassive q hype
+        putStr "[R'] " >> printPassive q hype
         putStr "  +  " >> printPassive p hype
         putStr "  :  " >> printPassive p' hype
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)

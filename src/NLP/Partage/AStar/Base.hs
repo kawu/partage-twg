@@ -9,6 +9,7 @@ module NLP.Partage.AStar.Base
   -- , nonTerm
   , nonTerm'
   , isSister'
+  , isDNode'
   , labNonTerm
   )
 where
@@ -78,6 +79,13 @@ nonTerm' did dag = labNonTerm =<< DAG.label did dag
 isSister' :: DAG.DID -> DAG.DAG (O.Node n t) w -> Bool
 isSister' did dag = isJust $ do
   O.Sister _ <- DAG.label did dag
+  return $ Just ()
+
+
+-- | Is the node marked as d-daughter node?
+isDNode' :: DAG.DID -> DAG.DAG (O.Node n t) w -> Bool
+isDNode' did dag = isJust $ do
+  O.DNode _ <- DAG.label did dag
   return $ Just ()
 
 

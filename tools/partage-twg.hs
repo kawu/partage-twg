@@ -996,7 +996,7 @@ showParse
   -> L.Text
 showParse deriv
   = showIt
-  . check
+  -- . check
   $ parse
   where
     showIt = Br.showTree . fmap rmTokID'

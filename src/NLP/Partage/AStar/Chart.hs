@@ -638,15 +638,15 @@ withGap getAuto getChart gap = do
 --   return (p, duoWeight e)
 
 
--- | Indexing function for `provideBegIni'` (UPDATE 02.09.2020: take the
--- smallest gap only)
-withGapIx :: Passive n t -> [(Pos, Pos, n)]
-withGapIx p = maybeToList . S.lookupMin $ p ^. spanP ^. gaps
-
-
--- -- | Indexing function for `provideBegIni'`
+-- -- | Indexing function for `provideBegIni'` (UPDATE 02.09.2020: take the
+-- -- smallest gap only)
 -- withGapIx :: Passive n t -> [(Pos, Pos, n)]
--- withGapIx p = S.toList $ p ^. spanP ^. gaps
+-- withGapIx p = maybeToList . S.lookupMin $ p ^. spanP ^. gaps
+
+
+-- | Indexing function for `provideBegIni'`
+withGapIx :: Passive n t -> [(Pos, Pos, n)]
+withGapIx p = S.toList $ p ^. spanP ^. gaps
 
 
 --------------------------------------------------
