@@ -112,7 +112,7 @@ import           Data.Maybe     ( isJust, isNothing, mapMaybe
                                 , maybeToList, fromJust )
 import qualified Data.Map.Strict            as M
 -- import           Data.Ord       ( comparing )
--- import           Data.List      ( sortBy )
+import qualified Data.List                  as L
 import qualified Data.Set                   as S
 import qualified Data.PSQueue               as Q
 import           Data.PSQueue (Binding(..))
@@ -1778,10 +1778,9 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
     guard $ isNothing (getL callBackNodeP q)
 
     -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    -- for each available gap
-    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
---     -- UPDATE 02.09.2020: consider the smallest gap only!
---     gap@(gapBeg, gapEnd, gapNT) <- each . maybeToList . S.lookupMin $ qSpan ^. gaps
+    -- for each available gap, together with the slot number
+    (slotNum, gap@(gapBeg, gapEnd, gapNT)) <-
+      each . zip [0..] . S.toList $ qSpan ^. gaps
     -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     -- TODO: add desc
@@ -1822,7 +1821,7 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
           (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
-    lift $ pushPassive p' newDuo (CompleteWrapping p q depCost)
+    lift $ pushPassive p' newDuo (CompleteWrapping p q slotNum depCost)
 #ifdef CheckMonotonic
     lift . lift $ testMono' "COMPLETE-WRAPPING" (p, pw) (q, qw) (p', newDuo)
 --     totalP <- lift . lift $ est2total pw <$> estimateDistP p
@@ -1885,6 +1884,12 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
     -- UPDATE 01.09.2020: internal wrapping change
     guard $ isNothing (getL callBackNodeP q)
 
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    -- Determine the slot number
+    let slotNum = fromJust $
+          L.findIndex (==gap) (S.toAscList $ qSpan ^. gaps)
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     -- determine q's non-terminal
     qNonTerm <- some (nonTerm' qDID dag)
 
@@ -1917,7 +1922,7 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
           (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
-    lift $ pushPassive p' newDuo (CompleteWrapping p q depCost)
+    lift $ pushPassive p' newDuo (CompleteWrapping p q slotNum depCost)
 
 #ifdef CheckMonotonic
     lift . lift $ testMono' "COMPLETE-WRAPPING'" (p, pw) (q, qw) (p', newDuo)
@@ -1967,10 +1972,9 @@ tryCompleteWrappingPrim q qw = void $ P.runListT $ do
     guard . not $ isSister' qDID dag
 
     -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    -- for each available gap
-    gap@(gapBeg, gapEnd, gapNT) <- each . S.toList $ qSpan ^. gaps
---     -- UPDATE 02.09.2020: consider the smallest gap only!
---     gap@(gapBeg, gapEnd, gapNT) <- each . maybeToList . S.lookupMin $ qSpan ^. gaps
+    -- for each available gap, together with the slot number
+    (slotNum, gap@(gapBeg, gapEnd, gapNT)) <-
+      each . zip [0..] . S.toList $ qSpan ^. gaps
     -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
     -- TODO: add desc
@@ -2022,7 +2026,7 @@ tryCompleteWrappingPrim q qw = void $ P.runListT $ do
           (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
-    lift $ pushPassive p' newDuo (CompleteWrappingPrim p q depCost)
+    lift $ pushPassive p' newDuo (CompleteWrappingPrim p q slotNum depCost)
 #ifdef CheckMonotonic
     lift . lift $ testMono' "COMPLETE-WRAPPING" (p, pw) (q, qw) (p', newDuo)
 --     totalP <- lift . lift $ est2total pw <$> estimateDistP p
@@ -2086,6 +2090,12 @@ tryCompleteWrappingPrim' p pw = void $ P.runListT $ do
     -- determine q's non-terminal
     qNonTerm <- some (nonTerm' qDID dag)
 
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    -- Determine the slot number
+    let slotNum = fromJust $
+          L.findIndex (==gap) (S.toAscList $ qSpan ^. gaps)
+    -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     -- verify the label of the parent
     parIdSet <- some $ M.lookup (p ^. dagID) parMap
     if (S.size parIdSet > 1)
@@ -2127,7 +2137,7 @@ tryCompleteWrappingPrim' p pw = void $ P.runListT $ do
           (duoGap pw)
         newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
     -- push the resulting state into the waiting queue
-    lift $ pushPassive p' newDuo (CompleteWrappingPrim p q depCost)
+    lift $ pushPassive p' newDuo (CompleteWrappingPrim p q slotNum depCost)
 
 #ifdef CheckMonotonic
     lift . lift $ testMono' "COMPLETE-WRAPPING'" (p, pw) (q, qw) (p', newDuo)
@@ -2209,8 +2219,10 @@ fromPassive passive hype = concat
 --         [ replaceFoot ini aux
 --         | aux <- fromPassive qa hype
 --         , ini <- fromPassive qm hype ]
-    fromPassiveTrav _p (CompleteWrapping qw qm _) =
-      [ O.replaceSlot wrp mod
+    fromPassiveTrav _p (CompleteWrapping qw qm _slotNum _) =
+      -- TODO: use the slotNum to replace correct slot
+      -- [ O.replaceSlot wrp mod
+      [ undefined
       | mod <- rmRoot <$> fromPassive qm hype
       , wrp <- fromPassive qw hype ]
     fromPassiveTrav p (Deactivate q _) =

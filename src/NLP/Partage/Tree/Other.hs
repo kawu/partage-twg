@@ -235,16 +235,18 @@ replaceSlot plug tree =
 
 
 -- | Version of `replaceSlot` working on a different representation of trees.
-replaceSlot' :: Tree n t -> Tree n t -> Tree n t
-replaceSlot' plug tree =
-  State.evalState (go tree) True
+replaceSlot'
+  :: Int  -- ^ Slot number
+  -> Tree n t
+  -> Tree n t
+  -> Tree n t
+replaceSlot' slotNum plug tree =
+  State.evalState (go tree) slotNum
   where
     go t@(R.Node (NonTerm x) []) = do
-      flag <- State.get
-      if flag
-         then do
-           State.put False
-           return plug
-         else do
-           return t
+      k <- State.get
+      State.put $ k - 1
+      return $ if k == 0
+         then plug
+         else t
     go (R.Node nd ts) = R.Node nd <$> mapM go ts

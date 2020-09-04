@@ -99,12 +99,15 @@ getRootET = fmap D.node
 
 -- | Get the derivations (and their corresponding Gorn addresses)
 -- modifying the rootET.
+--
+-- TODO: ignoring modifier paths
+--
 getModifs :: D.Deriv D.Norm n t -> [(Path, [D.Deriv D.Norm n t])]
 getModifs =
   map (Arr.first reverse) . go []
   where
     go gorn R.Node{..}
-      = (gorn, D.modif rootLabel)
+      = (gorn, map D.modDeriv (D.modif rootLabel))
       : concat
         [ go (i:gorn) child
         | (i, child) <- zip [0..] subForest ]

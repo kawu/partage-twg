@@ -118,6 +118,8 @@ data Trav n t
         -- ^ The wrapping item
         , passMod  :: Passive n t
         -- ^ The modified item
+        , slotNum  :: Int
+          -- ^ Number of the filled slot (starts with 0)
         , _weight   :: Weight
         -- ^ The traversal weight
         }
@@ -126,6 +128,8 @@ data Trav n t
         -- ^ The wrapping item
         , passMod  :: Passive n t
         -- ^ The modified item
+        , slotNum  :: Int
+          -- ^ Number of the filled slot (starts with 0)
         , _weight  :: Weight
         -- ^ The traversal weight
         }

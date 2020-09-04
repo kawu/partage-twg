@@ -7,8 +7,8 @@
 
 module NLP.Partage.AStar.Deriv
 ( Deriv
--- , ModifDerivs
 , DerivNode (..)
+, Modif (..)
 , Norm
 , UnNorm
 , derivTrees
@@ -59,6 +59,7 @@ import           Pipes                     ((>->))
 
 import           NLP.Partage.SOrd          (SOrd)
 import qualified NLP.Partage.Tree          as T
+import           NLP.Partage.Tree        (Path)
 import qualified NLP.Partage.DAG as DAG
 import           NLP.Partage.AStar         (Tok)
 import qualified NLP.Partage.AStar         as A
@@ -99,27 +100,51 @@ data Norm
 type Deriv c n t = R.Tree (DerivNode c n t)
 
 
--- | A node of a derivation tree.
+-- | A modifier (or dependent) in the derivation tree
+data Modif c n t = Modif
+  { modDeriv :: Deriv c n t
+    -- ^ The derivation of the modifier (dependent)
+  , modSlot :: Maybe Int
+    -- ^ The additional slot number is used in case of internal wrapping
+    -- substitution, when we need to point to the substitution site that is to
+    -- be filled with the d-daughter node.
+  } deriving (Eq, Ord, Show)
+
+
+-- | A node of a derivation tree
 data DerivNode c n t = DerivNode
   { node  :: O.Node n (Maybe t)
-  , modif :: [Deriv c n t]
+    -- ^ The node itself
+  , modif :: [Modif c n t]
+    -- ^ The list of modifiers (dependents)
   } deriving (Eq, Ord, Show)
 
 
 -- | Normalize the derivation tree so that sister adjunction is modeled
 -- properly using the `modif` field.
-normalize :: Deriv UnNorm n t -> Deriv Norm n t
+normalize :: forall n t. Deriv UnNorm n t -> Deriv Norm n t
 normalize =
+
   onTree
+
   where
+
+    onTree :: Deriv UnNorm n t -> Deriv Norm n t
     onTree t =
       let (children, sisters) = onChildren (R.subForest t)
           rootNode = DerivNode
             { node = node (R.rootLabel t)
-            , modif = (map onTree . modif) (R.rootLabel t) ++ sisters }
+            , modif = ((map onModif . modif) (R.rootLabel t))
+                   ++ (map (flip Modif Nothing) sisters)
+            }
        in R.Node
          { R.rootLabel = rootNode
          , R.subForest = children }
+
+    onModif :: Modif UnNorm n t -> Modif Norm n t
+    onModif (Modif t mp) = Modif (onTree t) mp
+
+    onChildren :: [Deriv UnNorm n t] -> ([Deriv Norm n t], [Deriv Norm n t])
     onChildren ts = (,) <$> lefts <*> rights $
       [ case node (R.rootLabel t) of
           O.Sister _ -> Right (onTree t)
@@ -131,13 +156,16 @@ normalize =
 -- is a modifier or note.
 data PrintNode a
   = Regular a
-  | Dependent
+  | Dependent (Maybe Int)
+    -- ^ The `Int` is used in case of internal wrapping substitution (see
+    -- `Modif`)
   deriving (Eq, Ord)
 
 
 instance Show a => Show (PrintNode a) where
   show (Regular x) = show x
-  show Dependent = "<<Dependent>>"
+  show (Dependent Nothing) = "<<Dependent>>"
+  show (Dependent (Just p)) = "<<Dependent (slot " ++ show p ++ ")>>"
 
 
 -- -- | Transform the derivation tree into a tree which is easier
@@ -164,15 +192,14 @@ instance Show a => Show (PrintNode a) where
 -- to draw using the standard `R.draw` function.
 deriv4show :: Deriv c n t -> R.Tree (PrintNode (O.Node n (Maybe t)))
 deriv4show =
-  go False
+  go
   where
-    go isMod t = addDep isMod $ R.Node
+    go t = R.Node
       { R.rootLabel = Regular . node . R.rootLabel $ t
-      , R.subForest = map (go False) (R.subForest t)
-                   ++ map (go True) (modif $ R.rootLabel t) }
-    addDep isMod t
-      | isMod == True = R.Node Dependent [t]
-      | otherwise = t
+      , R.subForest = map go (R.subForest t)
+                   ++ map goMod (modif $ R.rootLabel t) }
+    goMod (Modif t mp) = addDep mp (go t)
+    addDep p t = R.Node (Dependent p) [t]
 
 
 ---------------------------
@@ -206,7 +233,7 @@ normalizeParse R.Node{..} =
 toUnNormParse :: (Show n, Show t) => Deriv UnNorm n t -> O.Tree n (Maybe t)
 toUnNormParse deriv =
   applyAll
-    (map (applyDeriv . toUnNormParse) modif)
+    (map (uncurry applyDeriv . onModif) modif)
     tree'
   where
     DerivNode{..} = R.rootLabel deriv
@@ -214,23 +241,26 @@ toUnNormParse deriv =
       { R.rootLabel = node
       , R.subForest = map toUnNormParse (R.subForest deriv)
       }
+    onModif (Modif t mp) = (toUnNormParse t, mp)
 
 
 -- | Apply a given modifier tree to a given head tree.
 applyDeriv
   :: (Show n, Show t)
   => O.Tree n (Maybe t)
+  -> Maybe Int
+    -- ^ Substitution slot to fill (if provided)
   -> O.Tree n (Maybe t)
   -> O.Tree n (Maybe t)
-applyDeriv mod hed
+applyDeriv mod slotNum hed
   | isLeafTree hed = applySubst mod hed
   | isSisterTree mod =
       error "Deriv.applyDeriv: isSister should not be possible!"
       -- applySister pos mod hed
   -- | otherwise = applyAdj mod hed
-  | isDNodeTree hed = applyWrapping hed mod
+  | isDNodeTree hed = applyWrapping (fromJust slotNum) hed mod
   -- | hasDNodeDaughter mod = applyInternalWrapping mod hed
-  | otherwise = applyInternalWrapping mod hed
+  | otherwise = applyInternalWrapping (fromJust slotNum) mod hed
 --   | otherwise =
 --       error "Deriv.applyDeriv: impossible happened!"
   where
@@ -251,48 +281,18 @@ applySubst :: O.Tree n (Maybe t) -> O.Tree n (Maybe t) -> O.Tree n (Maybe t)
 applySubst mod _hed = mod
 
 
--- -- | Apply sister adjunction
--- applySister
---   :: (Show n, Show t, Ord pos)
---   => (t -> pos)
---   -> O.Tree n (Maybe t)
---   -> O.Tree n (Maybe t)
---   -> O.Tree n (Maybe t)
--- applySister pos mod hed =
---   -- TODO: Remove the trace!
---   trace (showTree mod ++ "\n" ++ showTree hed ++ "\n") $
---   root (left ++ R.subForest mod ++ right)
---   where
---     (left, right) =
---       splitForest pos
---         (treePos pos mod)
---         (R.subForest hed)
---     root subf = R.Node
---       { R.rootLabel = R.rootLabel hed
---       , R.subForest = subf }
---     showTree = R.drawTree . fmap show
-
-
--- -- | Apply adjunction
--- applyAdj
---   :: (Show n, Show t)
---   => O.Tree n (Maybe t)
---   -> O.Tree n (Maybe t)
---   -> O.Tree n (Maybe t)
--- applyAdj mod hed =
---   O.replaceFoot hed mod
-
-
 -- | Apply wrapping
 applyWrapping
   :: (Show n, Show t)
-  => O.Tree n (Maybe t)
+  => Int
+    -- ^ Substitution slot
+  -> O.Tree n (Maybe t)
     -- ^ Wrapping tree
   -> O.Tree n (Maybe t)
     -- ^ Tree wrapped over
   -> O.Tree n (Maybe t)
-applyWrapping wrp mod =
-  markDNode $ O.replaceSlot' (unmarkDNode wrp) mod
+applyWrapping slotNum wrp mod =
+  markDNode $ O.replaceSlot' slotNum (unmarkDNode wrp) mod
   where
     markDNode (R.Node x ts) =
       flip R.Node ts $
@@ -314,15 +314,17 @@ applyWrapping wrp mod =
 -- | Apply internal wrapping
 applyInternalWrapping
   :: (Show n, Show t)
-  => O.Tree n (Maybe t)
+  => Int
+    -- ^ Substitution slot
+  -> O.Tree n (Maybe t)
     -- ^ Wrapping tree
   -> O.Tree n (Maybe t)
     -- ^ Tree wrapped over
   -> O.Tree n (Maybe t)
-applyInternalWrapping wrp
+applyInternalWrapping slotNum wrp
   = addOnRight right
   . addOnLeft left
-  . O.replaceSlot' (unmarkDNode wrp')
+  . O.replaceSlot' slotNum (unmarkDNode wrp')
   where
     left  = takeUntil (isDNode . R.rootLabel) (R.subForest wrp)
     right = takeAfter (isDNode . R.rootLabel) (R.subForest wrp)
@@ -394,24 +396,6 @@ applyInternalWrapping wrp
 --------------------------------------------------
 
 
--- -- | Construct a leaf tree with modifications and no direct subtrees.
--- mkInternalWrappingLeaf
---   :: A.Hype n t
---   -> A.Passive n t
---   -> [Deriv UnNorm n (Tok t)]
---   -> Deriv UnNorm n (Tok t)
--- mkInternalWrappingLeaf hype p ts = flip R.Node [] $ DerivNode
---   { node = O.NonTerm labNT
---   -- TODO: is `reverse` below necessary?  Shouldn't `ts` be also a
---   -- single-element list?
---   , modif = [modifTree]
---   } where
---     labNT = Item.nonTerm (p ^. Item.dagID) (A.automat hype)
---     modifTree = R.Node
---       { R.rootLabel = only $ O.NonTerm labNT
---       , R.subForest = reverse ts }
-
-
 -- | Construct internal wrapping:
 --
 -- The lower part of the current tree, to which a d-tree attaches via internal
@@ -425,7 +409,9 @@ mkInternalWrapping
   -> [Deriv UnNorm n (Tok t)]
   -> Deriv UnNorm n (Tok t)
 mkInternalWrapping hype p ts =
-  addRootModif modifTree subTree
+  addRootModif
+    (Modif modifTree (modSlot subTree))
+    (modDeriv subTree)
   where
     labNT = Item.nonTerm (p ^. Item.dagID) (A.automat hype)
     modifTree0 = R.Node
@@ -438,7 +424,7 @@ mkInternalWrapping hype p ts =
 -- | Extract the modifier of the d-daughter node in the input d-tree.  There
 -- can be only one such modifier (since it's a d-daughter node).  Also, there
 -- can be only one d-daughter node.
-extractDNodeModif :: Deriv UnNorm n (Tok t) -> Deriv UnNorm n (Tok t)
+extractDNodeModif :: Deriv UnNorm n (Tok t) -> Modif UnNorm n (Tok t)
 extractDNodeModif dTree =
   fromJust (go dTree)
   where
@@ -466,7 +452,7 @@ isDNode = \case
 
 -- | Add the given modification to the root of the derivation.
 addRootModif
-  :: Deriv UnNorm n (Tok t) -- ^ New modification
+  :: Modif UnNorm n (Tok t) -- ^ New modification
   -> Deriv UnNorm n (Tok t) -- ^ Deriv tree to modify (in its root)
   -> Deriv UnNorm n (Tok t)
 addRootModif newModif (R.Node derivNode subTrees) =
@@ -577,7 +563,7 @@ substNode hype p t
 --     , modif   = [t] }
   | DAG.isRoot (p ^. A.dagID) dag = flip R.Node [] $ DerivNode
     { node = O.NonTerm (derivRoot t)
-    , modif   = [t] }
+    , modif   = [Modif t Nothing] }
   | otherwise = t
   where
     dag = Auto.gramDAG $ A.automat hype
@@ -596,7 +582,7 @@ unSubstNode hype p t'
 --       return t
   | DAG.isRoot (p ^. A.dagID) dag = do
       R.Node DerivNode{..} [] <- return t'
-      [t] <- return modif
+      [Modif t _] <- return modif
       guard $ node == O.NonTerm (derivRoot t)
       return t
   | otherwise = Just t'
@@ -609,7 +595,7 @@ adjoinTree :: Deriv c n t -> Deriv c n t -> Deriv c n t
 adjoinTree ini aux = R.Node
   { R.rootLabel = let root = R.rootLabel ini in DerivNode
     { node = node root
-    , modif = aux : modif root }
+    , modif = Modif aux Nothing : modif root }
   , R.subForest = R.subForest ini }
 
 -- adjoinTree' :: Deriv n t -> Deriv n t -> Deriv n t
@@ -619,30 +605,30 @@ adjoinTree ini aux = R.Node
 --     , modif = aux : modif (R.rootLabel ini) }
 --   , R.subForest = R.subForest ini }
 
--- | Unverse of `adjoinTree`.
--- adjoinTree ini aux == cmb => unAjoinInit cmb == Just (ini, aux)
-unAdjoinTree :: Deriv c n t -> Maybe (Deriv c n t, Deriv c n t)
-unAdjoinTree cmb = do
-  subForestIni <- return (R.subForest cmb)
-  DerivNode{..} <- return (R.rootLabel cmb)
-  let nodeRootLabelIni = node
-  aux : modifRootLabelIni <- return modif
-  let rootLabelIni = DerivNode
-        { node = nodeRootLabelIni
-        , modif = modifRootLabelIni }
-      ini = R.Node
-        { R.rootLabel = rootLabelIni
-        , R.subForest = subForestIni }
-  return (ini, aux)
+-- -- | Unverse of `adjoinTree`.
+-- -- adjoinTree ini aux == cmb => unAjoinInit cmb == Just (ini, aux)
+-- unAdjoinTree :: Deriv c n t -> Maybe (Deriv c n t, Deriv c n t)
+-- unAdjoinTree cmb = do
+--   subForestIni <- return (R.subForest cmb)
+--   DerivNode{..} <- return (R.rootLabel cmb)
+--   let nodeRootLabelIni = node
+--   aux : modifRootLabelIni <- return modif
+--   let rootLabelIni = DerivNode
+--         { node = nodeRootLabelIni
+--         , modif = modifRootLabelIni }
+--       ini = R.Node
+--         { R.rootLabel = rootLabelIni
+--         , R.subForest = subForestIni }
+--   return (ini, aux)
 
 -- | Add the modifier derivation (second argument) to the list of modifications
 -- of the wrapping derivation (first argument).  Put differently, this function
 -- performs wrapping on the level of derivation trees.
-wrapTree :: Deriv c n t -> Deriv c n t -> Deriv c n t
-wrapTree wrp mod = R.Node
+wrapTree :: Deriv c n t -> Deriv c n t -> Int -> Deriv c n t
+wrapTree wrp mod slotNum = R.Node
   { R.rootLabel = let root = R.rootLabel wrp in DerivNode
     { node = markAsDNode $ node root
-    , modif = mod : modif root }
+    , modif = Modif mod (Just slotNum) : modif root }
   , R.subForest = R.subForest wrp }
 
 
@@ -695,12 +681,12 @@ fromPassiveTrav p trav hype = case trav of
 --     [ adjoinTree ini aux
 --     | aux <- passiveDerivs qa
 --     , ini <- passiveDerivs qm ]
-  A.CompleteWrapping qw qm _ ->
-    [ wrapTree wrp mod
+  A.CompleteWrapping qw qm slotNum _ ->
+    [ wrapTree wrp mod slotNum
     | wrp <- passiveDerivs qw
     , mod <- passiveDerivs qm ]
-  A.CompleteWrappingPrim qw qm _ ->
-    [ wrapTree wrp mod
+  A.CompleteWrappingPrim qw qm slotNum _ ->
+    [ wrapTree wrp mod slotNum
     | wrp <- passiveDerivs qw
     , mod <- passiveDerivs qm ]
   A.Deactivate q _ ->
@@ -828,11 +814,11 @@ travWeight trav h =
     A.PredictWrapping q _x _ -> activeWeight q h
     A.SisterAdjoin qp qa _ -> passiveWeight qp h + activeWeight qa h
     -- A.Adjoin qa qm _ -> passiveWeight qa h + passiveWeight qm h
-    A.CompleteWrapping qw qm _ -> passiveWeight qw h + passiveWeight qm h
+    A.CompleteWrapping qw qm _ _ -> passiveWeight qw h + passiveWeight qm h
     A.Deactivate q _ -> activeWeight q h
 
     -- NEW 03.09.2020:
-    A.CompleteWrappingPrim qw qm _ -> passiveWeight qw h + passiveWeight qm h
+    A.CompleteWrappingPrim qw qm _ _ -> passiveWeight qw h + passiveWeight qm h
     A.DeactivatePrim q _ -> activeWeight q h
     _ -> error "travWeight: cul-de-sac"
 
@@ -989,14 +975,14 @@ fromPassiveTravGenW minBy p trav hype =
 --       (aux, w) <- passiveDerivs qa
 --       (ini, w') <- passiveDerivs qm
 --       return (adjoinTree ini aux, w + w')
-    A.CompleteWrapping qw qm _ -> do
+    A.CompleteWrapping qw qm slotNum _ -> do
       (wrp, w) <- passiveDerivs qw
       (mod, w') <- passiveDerivs qm
-      return (wrapTree wrp mod, w + w')
-    A.CompleteWrappingPrim qw qm _ -> do
+      return (wrapTree wrp mod slotNum, w + w')
+    A.CompleteWrappingPrim qw qm slotNum _ -> do
       (wrp, w) <- passiveDerivs qw
       (mod, w') <- passiveDerivs qm
-      return (wrapTree wrp mod, w + w')
+      return (wrapTree wrp mod slotNum, w + w')
     A.Deactivate q _ -> do
       (ts, w) <- activeDerivs q
       return (mkTree hype p ts, w)
