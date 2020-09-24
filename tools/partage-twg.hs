@@ -10,7 +10,6 @@
 -- import           Prelude hiding (words)
 import           Control.Monad (forM_, when, guard)
 import qualified Control.Arrow as Arr
-import qualified Control.Monad.RWS.Strict   as RWS
 
 import           Data.Monoid ((<>))
 import           Data.Maybe (catMaybes)
@@ -376,7 +375,7 @@ run cmd =
           TIO.putStr . T.unwords $ map snd input
           LIO.putStr " => "
         case goldTree of
-          Just tree -> do
+          Just _tree -> do
             error "not implemented"
 --             parses <- map (fmap rmTokID . O.unTree) <$>
 --               E.parse gram startSym (E.fromList input)
@@ -400,7 +399,7 @@ run cmd =
             -- Show the number of parsed trees
             case showParseNum of
               Nothing -> return ()
-              Just k -> do
+              Just _k -> do
                 error "not implemented"
 --                 parses <- E.parse gram startSym (E.fromList input)
 --                 putStr "# Parse num: "
@@ -412,7 +411,7 @@ run cmd =
 --                   ]
 
         -- Show the parsed trees
-        let shorten = 
+        let _shorten =
               case showParsesMay of
                 Just k  -> take k
                 Nothing -> id

@@ -1,6 +1,6 @@
-import           Test.Tasty (defaultMain, testGroup, localOption)
+import           Test.Tasty (defaultMain, testGroup)
 
-import           TestSet
+-- import           TestSet
 import qualified Parser
 
 

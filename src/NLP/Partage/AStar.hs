@@ -127,7 +127,6 @@ import qualified Pipes.Prelude              as P
 import           Data.DAWG.Ord (ID)
 
 import           NLP.Partage.SOrd
-import qualified NLP.Partage.Tree       as T
 import qualified NLP.Partage.Tree.Other as O
 import qualified NLP.Partage.Auto as A
 
@@ -717,6 +716,7 @@ estimateDistA q = do
     return $ sup + dep
 
 
+#ifdef CheckMonotonic
 -- | Estimate the remaining distance for an active item.
 estimateDistA' :: (Ord n, SOrd t) => Active n -> Earley n t (Double, Double, Double)
 estimateDistA' q = do
@@ -726,6 +726,7 @@ estimateDistA' q = do
       , prefEsti (q ^. spanA ^. beg)
       , suffEsti (q ^. spanA ^. end)
       )
+#endif
 
 
 -- | Compute the amortized weight of the given passive item.
@@ -739,6 +740,7 @@ amortizedWeight = const $ return zeroWeight
 #endif
 
 
+#ifdef CheckMonotonic
 -- | Compute the amortized weight of the given passive item.
 amortizedWeight' :: Active n -> Earley n t Weight
 #ifdef NewHeuristic
@@ -747,6 +749,7 @@ amortizedWeight' q = do
   return $ trieAmort (q ^. state)
 #else
 amortizedWeight' = error "amortizedWeight' not implemented"
+#endif
 #endif
 
 
@@ -769,12 +772,12 @@ amortizedWeight' = error "amortizedWeight' not implemented"
 --     estOn i j = H.bagFromList . map terminal . over i j <$> RWS.asks inputSent
 
 
--- | The minimal possible cost of the given token as a dependent.
-minDepCost :: Tok t -> Earley n t Weight
-minDepCost tok = do
-  let pos = position tok
-  H.Esti{..} <- RWS.gets (estiCost . automat)
-  return $ minDepEsti pos
+-- -- | The minimal possible cost of the given token as a dependent.
+-- minDepCost :: Tok t -> Earley n t Weight
+-- minDepCost tok = do
+--   let pos = position tok
+--   H.Esti{..} <- RWS.gets (estiCost . automat)
+--   return $ minDepEsti pos
 
 
 ---------------------------------
@@ -968,7 +971,7 @@ omegaPos
 omegaPos depDid hedPosMay = do
   auto <- RWS.gets automat
   let anchorMap = anchorPos auto
-      anchorMap' = anchorPos' auto
+      -- anchorMap' = anchorPos' auto
       headMap = headPos auto
       dag = gramDAG auto
   let cost = do
@@ -1231,7 +1234,6 @@ trySubst' q qw = void $ P.runListT $ do
     -- some underlying maps
     auto <- RWS.gets automat
     let dag = gramDAG auto
-        leafMap = leafDID auto
 
     -- Learn what non-terminals `q` actually expects.
     -- WARNING: in the automaton-based parser, this seems not
@@ -1353,13 +1355,6 @@ tryDeactivate q qw = void $ P.runListT $ do
                      >> putStrLn " (is the new item a root?)"
       -- putStr " #E  " >> print estDis
 #endif
-  where
-    mkRoot node = case node of
-      O.NonTerm x -> NotFoot {notFootLabel=x, isSister=False}
-      O.Sister x  -> NotFoot {notFootLabel=x, isSister=True}
-      _ -> error "pushInduced: invalid root"
-    check (Just x) = x
-    check Nothing  = error "pushInduced: invalid DID"
 
 
 --------------------------------------------------
@@ -1429,13 +1424,6 @@ tryDeactivatePrim q qw = void $ P.runListT $ do
                      >> putStrLn " (is the new item a root?)"
       -- putStr " #E  " >> print estDis
 #endif
-  where
-    mkRoot node = case node of
-      O.NonTerm x -> NotFoot {notFootLabel=x, isSister=False}
-      O.Sister x  -> NotFoot {notFootLabel=x, isSister=True}
-      _ -> error "pushInduced: invalid root"
-    check (Just x) = x
-    check Nothing  = error "pushInduced: invalid DID"
 
 
 --------------------------------------------------
@@ -1525,9 +1513,6 @@ trySisterAdjoin' q qw = void $ P.runListT $ do
 #ifdef DebugOn
   begTime <- liftIO $ Time.getCurrentTime
 #endif
-  -- the underlying dag
-  auto <- RWS.gets automat
-  let dag = gramDAG auto
   -- the underlying LHS map
   lhsMap <- RWS.gets (lhsNonTerm . automat)
   -- Learn what is the LHS of `q`
@@ -1638,10 +1623,10 @@ tryPredictWrapping p pw = void $ P.runListT $ do
     -- push the resulting state into the waiting queue
     let newBeta = addWeight (duoBeta qw) tranCost
         -- newGap = sum [duoGap qw, duoBeta pw, duoGap pw, amortWeight]
-        newGap = safeInsert pBeg
+        newGapMap = safeInsert pBeg
           (duoBeta pw + sum (M.elems (duoGap pw)) + amortWeight)
           (duoGap qw)
-        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
+        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGapMap}
     -- push the resulting state into the waiting queue
     -- liftIO $ putStrLn "==>> PW !!" 
     lift $ pushInduced q' newDuo (PredictWrapping q nodeNT tranCost)
@@ -1675,7 +1660,6 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
     -- some underlying maps
     auto <- RWS.gets automat
     let dag = gramDAG auto
-        leafMap = leafDID auto
 
     -- UPDATE 01.09.2020: internal wrapping change
     guard $ isNothing (getL callBackNodeA q)
@@ -1695,8 +1679,7 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
     -- (a) begin where `q` ends, and which          (OK)
     -- (b) provide the non-terminal expected by `q` (OK)
     (p, pw) <- provideBegIni qNT (q ^. spanA ^. end)
-    let pDID = p ^. dagID
-        pSpan = p ^. spanP
+    let pSpan = p ^. spanP
 
     -- make sure that `p` has ?ws == True
     guard $ getL ws p
@@ -1719,10 +1702,10 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
     let newBeta = addWeight (duoBeta qw) tranCost
         -- TODO: `duaGap qw` should be equal to `0`?
         -- newGap = sum [duoGap qw, duoBeta pw, duoGap pw, amortWeight]
-        newGap = safeInsert pBeg
+        newGapMap = safeInsert pBeg
           (duoBeta pw + sum (M.elems (duoGap pw)) + amortWeight)
           (duoGap qw)
-        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGap}
+        newDuo = DuoWeight {duoBeta = newBeta, duoGap = newGapMap}
     -- push the resulting state into the waiting queue
     -- liftIO $ putStrLn "==>> PW !!" 
     -- lift $ pushInduced q' newDuo (PredictWrapping p q tranCost)
@@ -2553,9 +2536,9 @@ some = each . maybeToList
 --     _         -> False
 
 
--- | Get a range of the given list.
-over :: Pos -> Pos -> [a] -> [a]
-over i j = take (j - i) . drop i
+-- -- | Get a range of the given list.
+-- over :: Pos -> Pos -> [a] -> [a]
+-- over i j = take (j - i) . drop i
 
 
 -- -- | Take the non-terminal of the underlying DAG node.
@@ -2583,14 +2566,14 @@ nonTermH i = Item.nonTerm i . automat
 --------------------------------------------------
 
 
--- | Total weight form the duo-weight and the corresponding estimated weight.
-est2total :: DuoWeight -> Weight -> Weight
-est2total duo = totalWeight . extWeight0 duo
+-- -- | Total weight form the duo-weight and the corresponding estimated weight.
+-- est2total :: DuoWeight -> Weight -> Weight
+-- est2total duo = totalWeight . extWeight0 duo
 
 
--- | Epsilon to compare small values.
-epsilon :: Weight
-epsilon = 1e-10
+-- -- | Epsilon to compare small values.
+-- epsilon :: Weight
+-- epsilon = 1e-10
 
 
 #ifdef CheckMonotonic
