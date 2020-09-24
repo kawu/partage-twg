@@ -90,8 +90,15 @@ library
     -- MWE-aware A* TAG parsing revisited)
     cpp-options: -DNewHeuristic
 
-    -- Check realtime if the monotonicity property is preserved
+    -- Check realtime if the monotonicity property is preserved (see also the
+    -- HandleDymmyArcWeight flag below)
     -- cpp-options: -DCheckMonotonic
+
+    -- Account for the weight of the arc leading to the dummy root.  This makes
+    -- the implementation slighly inconsistent with the formal description of
+    -- the inference rules.  Note also that, currently, with this option turned
+    -- on, monotonicity tests fail with the CheckMonotonic flag.
+    cpp-options: -DHandleDummyArcWeight
 
     -- Grammar compression
     -- cpp-options: -DCompression
@@ -102,12 +109,6 @@ library
     -- Allow many (regular) adjunctions at a given node
     -- WARNING: you have to manage this flag in the test-suite as well!
     cpp-options: -DNoAdjunctionRestriction
-
-    -- Account for the weight of the arc leading to the dummy root.  This makes
-    -- the implementation slighly inconsistent with the formal description of
-    -- the inference rules.  Note also that, currently, with this option turned
-    -- on, monotonicity tests fail with the CheckMonotonic flag.
-    cpp-options: -DHandleDummyArcWeight
 
 
 source-repository head

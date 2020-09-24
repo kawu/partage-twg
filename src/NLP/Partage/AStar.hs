@@ -532,7 +532,7 @@ pushActive p newWeight newTrav = do
 #ifdef DebugOn
     track estWeight = do
       hype <- RWS.get
-      liftIO $ do
+      P.liftIO $ do
         putStr ">A>  " >> printActive p hype
         putStr " :>  " >> print (newWeight, estWeight)
 #else
@@ -603,7 +603,7 @@ pushPassive p newWeight0 newTrav0 = do
 #ifdef DebugOn
     track newWeight estWeight = do
       hype <- RWS.get
-      liftIO $ do
+      P.liftIO $ do
         putStr ">P>  " >> printPassive p hype
         putStr " :>  " >> print (newWeight, estWeight)
 #else
@@ -672,13 +672,9 @@ popItem = RWS.state $ \st -> case Q.minView (waiting st) of
 -- the "gap weight", which is threaded via inference rules).
 estimateDistP :: (Ord t, Ord n) => Passive n t -> Earley n t Weight
 estimateDistP p = do
-  (sup, pref, suff) <-  estimateDistP' p
+  (sup, pref, suff) <- estimateDistP' p
   let dep = pref + suff
   return $ sup + dep
---        let sup = dagAmort (p ^. dagID)
---            dep = prefEsti (p ^. spanP ^. beg)
---                + suffEsti (p ^. spanP ^. end)
---         in sup + dep
 
 
 -- | Estimate the remaining distance for a passive item.  Version of
@@ -700,7 +696,10 @@ estimateDistP' p = do
   return $ if isFinal
     then (0, 0, 0)
     else
-      ( dagAmort (p ^. dagID)
+      -- UPDATE 24/09/2020: account for the amortized cost of the callback node
+      ( dagAmort (p ^. dagID) + case p ^. callBackNodeP of
+          Nothing -> 0
+          Just cid -> dagAmort cid
       , prefEsti (p ^. spanP ^. beg)
       , suffEsti (p ^. spanP ^. end)
       )
@@ -710,7 +709,10 @@ estimateDistP' p = do
 estimateDistA :: (Ord n, SOrd t) => Active n -> Earley n t Weight
 estimateDistA q = do
     H.Esti{..} <- RWS.gets (estiCost . automat)
-    let sup = trieAmort (q ^. state)
+    -- UPDATE 24/09/2020: account for the amortized cost of the callback node
+    let sup = trieAmort (q ^. state) + case q ^. callBackNodeA of
+          Nothing -> 0
+          Just cid -> dagAmort cid
         dep = prefEsti (q ^. spanA ^. beg)
             + suffEsti (q ^. spanA ^. end)
     return $ sup + dep
@@ -722,14 +724,18 @@ estimateDistA' :: (Ord n, SOrd t) => Active n -> Earley n t (Double, Double, Dou
 estimateDistA' q = do
     H.Esti{..} <- RWS.gets (estiCost . automat)
     return $
-      ( trieAmort (q ^. state)
+      -- UPDATE 24/09/2020: account for the amortized cost of the callback node
+      ( trieAmort (q ^. state) + case q ^. callBackNodeA of
+          Nothing -> 0
+          Just cid -> dagAmort cid
       , prefEsti (q ^. spanA ^. beg)
       , suffEsti (q ^. spanA ^. end)
       )
 #endif
 
 
--- | Compute the amortized weight of the given passive item.
+-- | Compute the amortized weight of the main DAG node of the passive item.
+-- NOTE: the callback node is ignored.
 amortizedWeight :: Passive n t -> Earley n t Weight
 #ifdef NewHeuristic
 amortizedWeight p = do
@@ -741,7 +747,8 @@ amortizedWeight = const $ return zeroWeight
 
 
 #ifdef CheckMonotonic
--- | Compute the amortized weight of the given passive item.
+-- | Compute the amortized weight of the given active item.
+-- NOTE: the callback node is ignored.
 amortizedWeight' :: Active n -> Earley n t Weight
 #ifdef NewHeuristic
 amortizedWeight' q = do
@@ -845,7 +852,7 @@ withGap = Chart.withGap automat chart
 tryScan :: (SOrd t, SOrd n) => Active n -> DuoWeight -> EarleyPipe n t ()
 tryScan p duo = void $ P.runListT $ do
 #ifdef DebugOn
-  begTime <- liftIO $ Time.getCurrentTime
+  begTime <- P.liftIO $ Time.getCurrentTime
 #endif
   -- read the word immediately following the ending position of
   -- the state
@@ -877,7 +884,7 @@ tryScan p duo = void $ P.runListT $ do
 #ifdef DebugOn
   -- print logging information
   hype <- RWS.get
-  liftIO $ do
+  P.liftIO $ do
       endTime <- Time.getCurrentTime
       putStr "[S]  " >> printActive p hype
       putStr "  :  " >> printActive q hype
@@ -891,7 +898,7 @@ tryScan p duo = void $ P.runListT $ do
 tryEmpty :: (SOrd t, SOrd n) => Active n -> DuoWeight -> EarleyPipe n t ()
 tryEmpty p duo = void $ P.runListT $ do
 #ifdef DebugOn
-  begTime <- liftIO $ Time.getCurrentTime
+  begTime <- P.liftIO $ Time.getCurrentTime
 #endif
 --   -- read the word immediately following the ending position of
 --   -- the state
@@ -923,7 +930,7 @@ tryEmpty p duo = void $ P.runListT $ do
 #ifdef DebugOn
   -- print logging information
   hype <- RWS.get
-  liftIO $ do
+  P.liftIO $ do
       endTime <- Time.getCurrentTime
       putStr "[E]  " >> printActive p hype
       putStr "  :  " >> printActive q hype
@@ -1010,7 +1017,7 @@ tryPseudoSubst
     -> EarleyPipe n t ()
 tryPseudoSubst p pw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
     let pDID = getL dagID p
         pSpan = getL spanP p
@@ -1063,7 +1070,7 @@ tryPseudoSubst p pw = void $ P.runListT $ do
 #ifdef DebugOn
     -- print logging information
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[?]  " >> printPassive p hype
         putStr "  +  " >> printActive q hype
@@ -1081,7 +1088,7 @@ tryPseudoSubst'
     -> EarleyPipe n t ()
 tryPseudoSubst' q qw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
     -- some underlying maps
     auto <- RWS.gets automat
@@ -1134,7 +1141,7 @@ tryPseudoSubst' q qw = void $ P.runListT $ do
 #ifdef DebugOn
     -- print logging information
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[?'] " >> printActive q hype
         putStr "  +  " >> printPassive p hype
@@ -1159,7 +1166,7 @@ trySubst
     -> EarleyPipe n t ()
 trySubst p pw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
     let pDID = getL dagID p
         pSpan = getL spanP p
@@ -1209,7 +1216,7 @@ trySubst p pw = void $ P.runListT $ do
 #ifdef DebugOn
     -- print logging information
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[U]  " >> printPassive p hype
         putStr "  +  " >> printActive q hype
@@ -1229,7 +1236,7 @@ trySubst'
     -> EarleyPipe n t ()
 trySubst' q qw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
     -- some underlying maps
     auto <- RWS.gets automat
@@ -1289,7 +1296,7 @@ trySubst' q qw = void $ P.runListT $ do
 #ifdef DebugOn
     -- print logging information
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[U'] " >> printActive q hype
         putStr "  +  " >> printPassive p hype
@@ -1313,7 +1320,7 @@ tryDeactivate
   -> EarleyPipe n t ()
 tryDeactivate q qw = void $ P.runListT $ do
 #ifdef DebugOn
-  begTime <- liftIO $ Time.getCurrentTime
+  begTime <- P.liftIO $ Time.getCurrentTime
 #endif
 
   -- UPDATE 01.09.2020: internal wrapping change
@@ -1321,7 +1328,8 @@ tryDeactivate q qw = void $ P.runListT $ do
 
   -- sentLen <- length <$> RWS.asks inputSent
   dag <- RWS.gets (gramDAG . automat)
-  -- (headCost, did) <- heads (getL state q)
+  -- NOTE: `headCost` ignored, tree weights are handled explicitely in the
+  -- weighted deduction system.
   (_headCost, did) <- heads (getL state q)
   let p = Passive
           { _dagID = did
@@ -1329,8 +1337,7 @@ tryDeactivate q qw = void $ P.runListT $ do
           , _ws = DAG.isDNode did dag
           , _callBackNodeP = Nothing }
   let finalWeight = DuoWeight
-        { duoBeta = duoBeta qw -- + headCost
-        -- { duoBeta = duoBeta qw + headCost
+        { duoBeta = duoBeta qw  -- + headCost
         , duoGap = duoGap qw }
   -- lift $ pushPassive p finalWeight (Deactivate q headCost)
   lift $ pushPassive p finalWeight (Deactivate q 0)
@@ -1345,11 +1352,11 @@ tryDeactivate q qw = void $ P.runListT $ do
 #ifdef DebugOn
   -- print logging information
   hype <- RWS.get
-  liftIO $ do
+  P.liftIO $ do
       endTime <- Time.getCurrentTime
       putStr "[DE] " >> printActive q hype
       putStr "  :  " >> printPassive p hype
-      putStr " #W  " >> print (duoBeta finalWeight)
+      putStr " #W  " >> print finalWeight
       putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
       putStr " ?R  " >> putStr (show $ DAG.isRoot (p ^. dagID) dag)
                      >> putStrLn " (is the new item a root?)"
@@ -1372,7 +1379,7 @@ tryDeactivatePrim
   -> EarleyPipe n t ()
 tryDeactivatePrim q qw = void $ P.runListT $ do
 #ifdef DebugOn
-  begTime <- liftIO $ Time.getCurrentTime
+  begTime <- P.liftIO $ Time.getCurrentTime
 #endif
 
   dag <- RWS.gets (gramDAG . automat)
@@ -1385,6 +1392,8 @@ tryDeactivatePrim q qw = void $ P.runListT $ do
     "DE': callback node is a root"
   -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+  -- NOTE: `headCost` ignored, tree weights are handled explicitely in the
+  -- weighted deduction system.
   (_headCost, did) <- heads (getL state q)
 
   -- !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1397,9 +1406,9 @@ tryDeactivatePrim q qw = void $ P.runListT $ do
           , _spanP = getL spanA q
           , _ws = False
           , _callBackNodeP = Nothing }
-  let finalWeight = DuoWeight
-        { duoBeta = duoBeta qw -- + headCost
-        -- { duoBeta = duoBeta qw + headCost
+      treeWeight = fromJust $ DAG.value did dag
+      finalWeight = DuoWeight
+        { duoBeta = duoBeta qw + treeWeight  -- + headCost
         , duoGap = duoGap qw }
   -- lift $ pushPassive p finalWeight (Deactivate q headCost)
   lift $ pushPassive p finalWeight (DeactivatePrim q 0)
@@ -1414,7 +1423,7 @@ tryDeactivatePrim q qw = void $ P.runListT $ do
 #ifdef DebugOn
   -- print logging information
   hype <- RWS.get
-  liftIO $ do
+  P.liftIO $ do
       endTime <- Time.getCurrentTime
       putStr "[D'] " >> printActive q hype
       putStr "  :  " >> printPassive p hype
@@ -1439,7 +1448,7 @@ trySisterAdjoin
   -> EarleyPipe n t ()
 trySisterAdjoin p pw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
     hype <- RWS.get
     let auto = automat hype
@@ -1494,7 +1503,7 @@ trySisterAdjoin p pw = void $ P.runListT $ do
 #ifdef DebugOn
     -- print logging information
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[I]  " >> printPassive p hype
         putStr "  +  " >> printActive q hype
@@ -1511,7 +1520,7 @@ trySisterAdjoin'
   -> EarleyPipe n t ()
 trySisterAdjoin' q qw = void $ P.runListT $ do
 #ifdef DebugOn
-  begTime <- liftIO $ Time.getCurrentTime
+  begTime <- P.liftIO $ Time.getCurrentTime
 #endif
   -- the underlying LHS map
   lhsMap <- RWS.gets (lhsNonTerm . automat)
@@ -1564,7 +1573,7 @@ trySisterAdjoin' q qw = void $ P.runListT $ do
 #ifdef DebugOn
   -- print logging information
   hype <- RWS.get
-  liftIO $ do
+  P.liftIO $ do
       endTime <- Time.getCurrentTime
       putStr "[I'] " >> printPassive p hype
       putStr "  +  " >> printActive q hype
@@ -1588,7 +1597,7 @@ tryPredictWrapping
   -> EarleyPipe n t ()
 tryPredictWrapping p pw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
     let pDID = getL dagID p
         pSpan = getL spanP p
@@ -1618,7 +1627,7 @@ tryPredictWrapping p pw = void $ P.runListT $ do
            . setL (end . spanA) pEnd
            . modL' (gaps . spanA) (S.insert newGap)
            $ q
-    -- compute the amortized weight of item `p`
+    -- compute the amortized weight of item `p` (excluding the callback node)
     amortWeight <- lift . lift $ amortizedWeight p
     -- push the resulting state into the waiting queue
     let newBeta = addWeight (duoBeta qw) tranCost
@@ -1637,7 +1646,7 @@ tryPredictWrapping p pw = void $ P.runListT $ do
 #ifdef DebugOn
     -- print logging information
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[P]  " >> printPassive p hype
         putStr "  +  " >> printActive q hype
@@ -1654,7 +1663,7 @@ tryPredictWrapping'
   -> EarleyPipe n t ()
 tryPredictWrapping' q qw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
 
     -- some underlying maps
@@ -1696,7 +1705,7 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
            . setL (end . spanA) pEnd
            . modL' (gaps . spanA) (S.insert newGap)
            $ q
-    -- compute the amortized weight of item `p`
+    -- compute the amortized weight of item `p` (excluding the callback node)
     amortWeight <- lift . lift $ amortizedWeight p
     -- push the resulting state into the waiting queue
     let newBeta = addWeight (duoBeta qw) tranCost
@@ -1716,7 +1725,7 @@ tryPredictWrapping' q qw = void $ P.runListT $ do
 #ifdef DebugOn
     -- print logging information
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[P'] " >> printPassive p hype
         putStr "  +  " >> printActive q hype
@@ -1741,7 +1750,7 @@ tryCompleteWrapping
   -> EarleyPipe n t ()
 tryCompleteWrapping q qw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
     -- let qLab = q ^. label
     let qDID = q ^. dagID
@@ -1814,7 +1823,7 @@ tryCompleteWrapping q qw = void $ P.runListT $ do
 #endif
 #ifdef DebugOn
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[C]  " >> printPassive q hype
         putStr "  +  " >> printPassive p hype
@@ -1831,7 +1840,7 @@ tryCompleteWrapping'
   -> EarleyPipe n t ()
 tryCompleteWrapping' p pw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
     let pDID = p ^. dagID
         pSpan = p ^. spanP
@@ -1908,7 +1917,7 @@ tryCompleteWrapping' p pw = void $ P.runListT $ do
 #endif
 #ifdef DebugOn
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[C'] " >> printPassive q hype
         putStr "  +  " >> printPassive p hype
@@ -1933,7 +1942,7 @@ tryCompleteWrappingPrim
   -> EarleyPipe n t ()
 tryCompleteWrappingPrim q qw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
     -- let qLab = q ^. label
     let qDID = q ^. dagID
@@ -2019,7 +2028,7 @@ tryCompleteWrappingPrim q qw = void $ P.runListT $ do
 #endif
 #ifdef DebugOn
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[R]  " >> printPassive q hype
         putStr "  +  " >> printPassive p hype
@@ -2036,7 +2045,7 @@ tryCompleteWrappingPrim'
   -> EarleyPipe n t ()
 tryCompleteWrappingPrim' p pw = void $ P.runListT $ do
 #ifdef DebugOn
-    begTime <- liftIO $ Time.getCurrentTime
+    begTime <- P.liftIO $ Time.getCurrentTime
 #endif
     let pDID = p ^. dagID
         pSpan = p ^. spanP
@@ -2123,7 +2132,7 @@ tryCompleteWrappingPrim' p pw = void $ P.runListT $ do
 #endif
 #ifdef DebugOn
     hype <- RWS.get
-    liftIO $ do
+    P.liftIO $ do
         endTime <- Time.getCurrentTime
         putStr "[R'] " >> printPassive q hype
         putStr "  +  " >> printPassive p hype
@@ -2361,7 +2370,7 @@ earleyAutoGen =
 #ifdef DebugOn
           let item :-> e = p
           hype <- RWS.get
-          liftIO $ do
+          P.liftIO $ do
             putStr "POP: " >> printItem item hype
             putStr " :>  " >> print (priWeight e, gapWeight e, estWeight e)
 #endif
@@ -2566,17 +2575,17 @@ nonTermH i = Item.nonTerm i . automat
 --------------------------------------------------
 
 
--- -- | Total weight form the duo-weight and the corresponding estimated weight.
--- est2total :: DuoWeight -> Weight -> Weight
--- est2total duo = totalWeight . extWeight0 duo
-
-
--- -- | Epsilon to compare small values.
--- epsilon :: Weight
--- epsilon = 1e-10
-
-
 #ifdef CheckMonotonic
+-- | Total weight form the duo-weight and the corresponding estimated weight.
+est2total :: DuoWeight -> Weight -> Weight
+est2total duo = totalWeight . extWeight0 duo
+
+
+-- | Epsilon to compare small values.
+epsilon :: Weight
+epsilon = 1e-10
+
+
 testMono
     :: (SOrd n, SOrd t)
     => String
@@ -2613,14 +2622,14 @@ testMono opStr (p, pw) (q, qw) (q', newDuo) = do
         putStr " => amortized weight: "
         putStrLn $ show amortWeightP
 
-        printActive q
+        printActive q hype
         putStr " => "
         putStrLn $ show (qw, dist'Q)
         putStr " => amortized weight: "
         putStrLn $ show amortWeightQ
 
         putStrLn "HEAD:"
-        printActive q'
+        printActive q' hype
         putStr " => "
         putStrLn $ show (newDuo, dist'Q')
         putStr " => amortized weight: "

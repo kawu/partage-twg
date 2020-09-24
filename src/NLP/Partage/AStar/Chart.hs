@@ -306,6 +306,8 @@ hasPassiveTrav p travSet auto chart =
 ---------------------------------
 
 
+-- TODO: Verify that callBackNode is Nothing!
+--
 -- | Check whether the given passive item is final or not.
 isFinal
   :: (Ord n)
