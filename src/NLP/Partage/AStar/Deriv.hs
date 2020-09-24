@@ -31,20 +31,16 @@ module NLP.Partage.AStar.Deriv
 ) where
 
 
-import           Control.Monad             (forM_, guard, guard, void, when)
+import           Prelude hiding (mod)
+
+import           Control.Monad             (guard, guard)
 import           Control.Applicative       ((<|>), empty)
 import           Control.Arrow             (second)
 -- import           Control.Monad.IO.Class    (MonadIO (..), liftIO)
-import qualified Control.Monad.RWS.Strict  as RWS
 -- import qualified Control.Monad.State.Strict as E
-import           Control.Monad.Trans.Class (lift)
-import           Control.Monad.Trans.Maybe (MaybeT (..))
-import qualified Control.Monad.Morph       as Morph
 
-import qualified Data.Foldable as F
 import           Data.Lens.Light
-import qualified Data.Map.Strict           as M
-import           Data.Maybe                (listToMaybe, maybeToList, isJust, catMaybes, fromJust)
+import           Data.Maybe                (fromJust)
 import qualified Data.PSQueue              as Q
 import qualified Data.Set                  as S
 import qualified Data.Tree                 as R
@@ -53,24 +49,16 @@ import           Data.Either               (lefts, rights)
 import           Data.Ord                  (comparing)
 -- import qualified Data.Traversable           as Trav
 
-import qualified Pipes                     as P
-import           Pipes                     ((>->))
 -- import qualified Pipes.Prelude              as P
 
-import           NLP.Partage.SOrd          (SOrd)
-import qualified NLP.Partage.Tree          as T
-import           NLP.Partage.Tree        (Path)
 import qualified NLP.Partage.DAG as DAG
 import           NLP.Partage.AStar         (Tok)
 import qualified NLP.Partage.AStar         as A
 import qualified NLP.Partage.AStar.Base    as Base
 import qualified NLP.Partage.AStar.Item    as Item
 import qualified NLP.Partage.AStar.Auto    as Auto
-import qualified NLP.Partage.AStar.Chart   as Chart
 import           NLP.Partage.DAG           (Weight)
 import qualified NLP.Partage.Tree.Other    as O
-
-import Debug.Trace (trace)
 
 
 ---------------------------

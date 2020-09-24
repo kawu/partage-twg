@@ -22,6 +22,7 @@ import           Data.Maybe              (maybeToList)
 import qualified Pipes                   as P
 
 import qualified NLP.Partage.AStar       as A
+import qualified NLP.Partage.AStar.Parsed as A
 import qualified NLP.Partage.AStar.Deriv as D
 import qualified NLP.Partage.DAG         as DAG
 import qualified NLP.Partage.Earley      as E

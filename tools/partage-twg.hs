@@ -541,7 +541,7 @@ run cmd =
 
         case showParseNum of
           Nothing -> return ()
-          Just k -> do
+          Just _k -> do
             error "not implemented"
 --             putStr "# PARSE NUM: "
 --             putStrLn . show $ sum
@@ -996,7 +996,7 @@ showParse
   -> L.Text
 showParse deriv
   = showIt
-  -- . check
+  . check
   $ parse
   where
     showIt = Br.showTree . fmap rmTokID'

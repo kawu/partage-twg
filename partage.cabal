@@ -62,6 +62,7 @@ library
       , NLP.Partage.Earley.Chart
 
       , NLP.Partage.AStar
+      , NLP.Partage.AStar.Parsed
       , NLP.Partage.AStar.Deriv
       , NLP.Partage.AStar.Deriv.Gorn
 

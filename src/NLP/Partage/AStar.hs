@@ -1,5 +1,5 @@
-{-# LANGUAGE LambdaCase          #-}
-{-# LANGUAGE RecordWildCards      #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE GADTs #-}
@@ -52,10 +52,10 @@ module NLP.Partage.AStar
 , totalWeight
 , HypeModif (..)
 , ModifType (..)
--- ** Extracting parsed trees
-, parsedTrees
-, fromPassive
-, fromActive
+-- -- ** Extracting parsed trees
+-- , parsedTrees
+-- , fromPassive
+-- , fromActive
 
 -- -- ** Extracting derivation trees
 -- , Deriv
@@ -98,16 +98,14 @@ module NLP.Partage.AStar
 ) where
 
 
-import           Prelude hiding             (init, span, (.))
+import           Prelude hiding             (mod, init, span, (.))
 import           Control.Applicative        ((<$>), (<|>))
-import qualified Control.Arrow as Arr
-import           Control.Monad      (guard, void, (>=>), when, mplus, unless)
+import           Control.Monad      (guard, void, when, unless)
 import           Control.Monad.Trans.Class  (lift)
 -- import           Control.Monad.Trans.Maybe  (MaybeT (..))
 import qualified Control.Monad.RWS.Strict   as RWS
 import           Control.Category ((>>>), (.))
 
-import           Data.Function              (on)
 import           Data.Maybe     ( isJust, isNothing, mapMaybe
                                 , maybeToList, fromJust )
 import qualified Data.Map.Strict            as M
@@ -133,7 +131,7 @@ import qualified NLP.Partage.Tree       as T
 import qualified NLP.Partage.Tree.Other as O
 import qualified NLP.Partage.Auto as A
 
-import           NLP.Partage.DAG (DID, DAG, Weight)
+import           NLP.Partage.DAG (DID, Weight)
 import qualified NLP.Partage.DAG as DAG
 import           NLP.Partage.AStar.Auto (Auto(..), mkAuto, NotFoot(..))
 -- import qualified NLP.Partage.AStar.Heuristic.Base as H
@@ -141,7 +139,6 @@ import           NLP.Partage.AStar.Auto (Auto(..), mkAuto, NotFoot(..))
 import qualified NLP.Partage.AStar.Heuristic as H
 
 import           NLP.Partage.AStar.Base -- hiding (nonTerm)
-import qualified NLP.Partage.AStar.Base as Base
 import           NLP.Partage.AStar.Item hiding (printPassive, printActive)
 import qualified NLP.Partage.AStar.Item as Item
 import           NLP.Partage.AStar.ExtWeight
@@ -149,12 +146,11 @@ import qualified NLP.Partage.AStar.Chart as Chart
 
 
 -- For debugging purposes
-import           Control.Monad.IO.Class     (liftIO)
 #ifdef DebugOn
 import qualified Data.Time              as Time
 #endif
 
-import Debug.Trace (trace)
+-- import Debug.Trace (trace)
 
 
 --------------------------------------------------
@@ -367,8 +363,8 @@ elems i = do
 
 
 -- | Check if any element leaves the given state.
-hasElems :: ID -> Earley n t Bool
-hasElems i = do
+_hasElems :: ID -> Earley n t Bool
+_hasElems i = do
     auto <- RWS.gets $ gramAuto . automat
     let mayBody (x, _, _) = case x of
             A.Body y  -> Just y
@@ -2152,127 +2148,128 @@ tryCompleteWrappingPrim' p pw = void $ P.runListT $ do
         putStr "  @  " >> print (endTime `Time.diffUTCTime` begTime)
 #endif
 
+
 ---------------------------
 -- Extracting Parsed Trees
 ---------------------------
 
 
--- | Extract the set of the parsed trees w.r.t. to the given active item.
-fromActive
-  :: (SOrd n, Ord t)
-  => Active n
-  -> Hype n t
-  -> [[T.Tree (Maybe n) (Maybe (Tok t))]]
-fromActive active hype =
-  case activeTrav active hype of
-    Nothing  -> case Q.lookup (ItemA active) (waiting hype) of
-      Just _  -> error $
-        "fromActive: active item in the waiting queue"
-        ++ "\n" ++ show active
-      Nothing -> error $
-        "fromActive: unknown active item (not even in the queue)"
-        ++ "\n" ++ show active
-    Just ext -> if S.null (prioTrav ext)
-        then [[]]
-        else concatMap
-            (fromActiveTrav active)
-            (S.toList (prioTrav ext))
-  where
-    fromActiveTrav _p (Scan q t _) =
-        [ T.Leaf (Just t) : ts
-        | ts <- fromActive q hype ]
-    fromActiveTrav _p (Empty q _) =
-        [ T.Leaf Nothing : ts
-        | ts <- fromActive q hype ]
---     fromActiveTrav _p (Foot q x _) =
---         [ T.Branch x [] : ts
+-- -- | Extract the set of the parsed trees w.r.t. to the given active item.
+-- fromActive
+--   :: (SOrd n, Ord t)
+--   => Active n
+--   -> Hype n t
+--   -> [[T.Tree (Maybe n) (Maybe (Tok t))]]
+-- fromActive active hype =
+--   case activeTrav active hype of
+--     Nothing  -> case Q.lookup (ItemA active) (waiting hype) of
+--       Just _  -> error $
+--         "fromActive: active item in the waiting queue"
+--         ++ "\n" ++ show active
+--       Nothing -> error $
+--         "fromActive: unknown active item (not even in the queue)"
+--         ++ "\n" ++ show active
+--     Just ext -> if S.null (prioTrav ext)
+--         then [[]]
+--         else concatMap
+--             (fromActiveTrav active)
+--             (S.toList (prioTrav ext))
+--   where
+--     fromActiveTrav _p (Scan q t _) =
+--         [ T.Leaf (Just t) : ts
 --         | ts <- fromActive q hype ]
-    fromActiveTrav _p (Subst qp qa _) =
-        [ t : ts
-        | ts <- fromActive qa hype
-        , t  <- fromPassive qp hype ]
-    fromActiveTrav _p (SisterAdjoin qp qa _) =
-        [ ts' ++ ts
-        | ts  <- fromActive qa hype
-        , ts' <- T.subTrees <$> fromPassive qp hype ]
-    -- fromActiveTrav _p (PredictWrapping qp qa _) =
-    fromActiveTrav _p (PredictWrapping qa x _) =
-        -- [ T.Branch (Just (nonTermH (qp ^. dagID) hype)) [] : ts
-        [ T.Branch (Just x) [] : ts
-        | ts <- fromActive qa hype ]
-    fromActiveTrav _ _ =
-        error "fromActive: impossible fromActiveTrav"
-
-
--- | Extract the set of the parsed trees w.r.t. to the given passive item.
-fromPassive
-  :: (SOrd n, Ord t)
-  => Passive n t
-  -> Hype n t
-  -> [T.Tree (Maybe n) (Maybe (Tok t))]
-fromPassive passive hype = concat
-  [ fromPassiveTrav passive trav
-  | ext <- maybeToList $ passiveTrav passive hype
-  , trav <- S.toList (prioTrav ext) ]
-  where
---     fromPassiveTrav _p (Adjoin qa qm _) =
---         [ replaceFoot ini aux
---         | aux <- fromPassive qa hype
---         , ini <- fromPassive qm hype ]
-    fromPassiveTrav _p (CompleteWrapping qw qm _slotNum _) =
-      -- TODO: use the slotNum to replace correct slot
-      -- [ O.replaceSlot wrp mod
-      [ undefined
-      | mod <- rmRoot <$> fromPassive qm hype
-      , wrp <- fromPassive qw hype ]
-    fromPassiveTrav p (Deactivate q _) =
---       | dEdgeParent (p ^. dagID) hype = do
---           [t] <- fromActive q hype
---           return t
---       | otherwise =
-      [ T.Branch
-          (Just (nonTermH (p ^. dagID) hype))
-          (reverse ts)
-      | ts <- fromActive q hype
-      ]
-    -- processDEdge
-    fromPassiveTrav _ _ =
-        error "fromPassive: impossible fromPassiveTrav"
-    -- Mark the root as to-be-removed
-    rmRoot x@T.Branch{} = x {T.labelI = Nothing}
-    rmRoot x@T.Leaf{} = x
-
-
--- | Extract the set of parsed trees obtained on the given input
--- sentence.  Should be run on the result of the earley parser.
-parsedTrees
-    :: forall n t. (SOrd n, Ord t)
-    => Hype n t     -- ^ Final state of the earley parser
-    -> S.Set n      -- ^ The start symbol set
-    -> Int          -- ^ Length of the input sentence
-    -> [T.Tree n (Maybe (Tok t))]
-parsedTrees hype start n
-  = map process
-  . concatMap (`fromPassive` hype)
-  $ finalFrom start n hype
-  where
-    process t =
-      case removeRedundant t of
-        [t'] -> t'
-        _ -> error "AStar.parsedTrees: no non-terminal in the root"
-
-
--- | Remove redundant non-terminal nodes.
-removeRedundant :: T.Tree (Maybe n) t -> [T.Tree n t]
-removeRedundant = go
-  where
-    go T.Branch{..} =
-      case labelI of
-        Nothing -> subTrees'
-        Just nt -> [T.Branch nt subTrees']
-      where
-        subTrees' = concatMap go subTrees
-    go (T.Leaf x) = [T.Leaf x]
+--     fromActiveTrav _p (Empty q _) =
+--         [ T.Leaf Nothing : ts
+--         | ts <- fromActive q hype ]
+-- --     fromActiveTrav _p (Foot q x _) =
+-- --         [ T.Branch x [] : ts
+-- --         | ts <- fromActive q hype ]
+--     fromActiveTrav _p (Subst qp qa _) =
+--         [ t : ts
+--         | ts <- fromActive qa hype
+--         , t  <- fromPassive qp hype ]
+--     fromActiveTrav _p (SisterAdjoin qp qa _) =
+--         [ ts' ++ ts
+--         | ts  <- fromActive qa hype
+--         , ts' <- T.subTrees <$> fromPassive qp hype ]
+--     -- fromActiveTrav _p (PredictWrapping qp qa _) =
+--     fromActiveTrav _p (PredictWrapping qa x _) =
+--         -- [ T.Branch (Just (nonTermH (qp ^. dagID) hype)) [] : ts
+--         [ T.Branch (Just x) [] : ts
+--         | ts <- fromActive qa hype ]
+--     fromActiveTrav _ _ =
+--         error "fromActive: impossible fromActiveTrav"
+--
+--
+-- -- | Extract the set of the parsed trees w.r.t. to the given passive item.
+-- fromPassive
+--   :: (SOrd n, Ord t)
+--   => Passive n t
+--   -> Hype n t
+--   -> [T.Tree (Maybe n) (Maybe (Tok t))]
+-- fromPassive passive hype = concat
+--   [ fromPassiveTrav passive trav
+--   | ext <- maybeToList $ passiveTrav passive hype
+--   , trav <- S.toList (prioTrav ext) ]
+--   where
+-- --     fromPassiveTrav _p (Adjoin qa qm _) =
+-- --         [ replaceFoot ini aux
+-- --         | aux <- fromPassive qa hype
+-- --         , ini <- fromPassive qm hype ]
+--     fromPassiveTrav _p (CompleteWrapping qw qm _slotNum _) =
+--       -- TODO: use the slotNum to replace correct slot
+--       -- [ O.replaceSlot wrp mod
+--       [ undefined
+--       | mod <- rmRoot <$> fromPassive qm hype
+--       , wrp <- fromPassive qw hype ]
+--     fromPassiveTrav p (Deactivate q _) =
+-- --       | dEdgeParent (p ^. dagID) hype = do
+-- --           [t] <- fromActive q hype
+-- --           return t
+-- --       | otherwise =
+--       [ T.Branch
+--           (Just (nonTermH (p ^. dagID) hype))
+--           (reverse ts)
+--       | ts <- fromActive q hype
+--       ]
+--     -- processDEdge
+--     fromPassiveTrav _ _ =
+--         error "fromPassive: impossible fromPassiveTrav"
+--     -- Mark the root as to-be-removed
+--     rmRoot x@T.Branch{} = x {T.labelI = Nothing}
+--     rmRoot x@T.Leaf{} = x
+--
+--
+-- -- | Extract the set of parsed trees obtained on the given input
+-- -- sentence.  Should be run on the result of the earley parser.
+-- parsedTrees
+--     :: forall n t. (SOrd n, Ord t)
+--     => Hype n t     -- ^ Final state of the earley parser
+--     -> S.Set n      -- ^ The start symbol set
+--     -> Int          -- ^ Length of the input sentence
+--     -> [T.Tree n (Maybe (Tok t))]
+-- parsedTrees hype start n
+--   = map process
+--   . concatMap (`fromPassive` hype)
+--   $ finalFrom start n hype
+--   where
+--     process t =
+--       case removeRedundant t of
+--         [t'] -> t'
+--         _ -> error "AStar.parsedTrees: no non-terminal in the root"
+--
+--
+-- -- | Remove redundant non-terminal nodes.
+-- removeRedundant :: T.Tree (Maybe n) t -> [T.Tree n t]
+-- removeRedundant = go
+--   where
+--     go T.Branch{..} =
+--       case labelI of
+--         Nothing -> subTrees'
+--         Just nt -> [T.Branch nt subTrees']
+--       where
+--         subTrees' = concatMap go subTrees
+--     go (T.Leaf x) = [T.Leaf x]
 
 
 --------------------------------------------------
