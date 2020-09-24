@@ -84,10 +84,12 @@ data Auto n t = Auto
     , termDID  :: M.Map (Maybe t) (S.Set DID)
     -- ^ A map which assigns DAG IDs to the corresponding terminals. Note that
     -- each grammar terminal is represented by exactly one grammar DAG node.
-    , footDID  :: M.Map n (S.Set DID)
-    -- ^ A map which assigns DAG IDs to the corresponding foot non-terminals.
-    -- Note that each grammar foot non-terminal is represented by exactly one
-    -- grammar DAG node.
+
+--     , footDID  :: M.Map n (S.Set DID)
+--     -- ^ A map which assigns DAG IDs to the corresponding foot non-terminals.
+--     -- Note that each grammar foot non-terminal is represented by exactly one
+--     -- grammar DAG node.
+
     , leafDID  :: M.Map n (S.Set DID)
     -- ^ A map which assigns DAG IDs to the corresponding leaf non-terminals.
     -- Note that each grammar leaf non-terminal is represented by exactly one

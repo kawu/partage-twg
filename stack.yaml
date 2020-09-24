@@ -2,8 +2,8 @@
 
 # Specifies the GHC version and set of packages available (e.g., lts-3.5, nightly-2015-09-21, ghc-7.10.2)
 # resolver: lts-7.8
-resolver: lts-11.22
-# resolver: lts-12.26
+# resolver: lts-11.22
+resolver: lts-14.27
 
 # Local packages, usually specified by relative directory name
 packages:
@@ -12,6 +12,8 @@ packages:
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:
 - data-partition-0.3.0.0
+- PSQueue-1.1.0.1
+- dawg-ord-0.5.1.2
 
 # Override default flag values for local packages and extra-deps
 flags: {}

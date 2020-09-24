@@ -1,0 +1,8 @@
+cradle:
+  stack:
+    - path: "./src"
+      component: "partage:lib"
+    - path: "./tools"
+      component: "partage:exe:partage-twg"
+    - path: "./tests"
+      component: "partage:test:test"
