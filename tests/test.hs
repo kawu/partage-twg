@@ -1,11 +1,19 @@
 import           Test.Tasty (defaultMain, testGroup)
 
 -- import           TestSet
-import qualified Parser
+import qualified Unit
+import qualified Golden
 
 
 main :: IO ()
-main = defaultMain $ testGroup "Tests"
-    [ Parser.testEarley
-    , Parser.testAStar
-    ]
+main = do
+  goldenSymTests <- Golden.goldenSymTests
+  defaultMain $
+    testGroup "Tests" $
+      [ testGroup "Unit"
+        [ Unit.unitTestEarley
+        , Unit.unitTestAStar
+        ]
+      , testGroup "Golden"
+        [ goldenSymTests ]
+      ]

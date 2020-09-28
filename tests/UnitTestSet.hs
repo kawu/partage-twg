@@ -8,7 +8,7 @@
 -- unit test examples themselves.
 
 
-module TestSet
+module UnitTestSet
 ( Test (..)
 , TestRes (..)
 , Term (..)

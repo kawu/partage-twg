@@ -1,0 +1,11 @@
+1	Someone		(NP (PRO <>)):1.0
+2	picked		(SENTENCE (CLAUSE (CORE (NP ) (NUC (V <>)) (NP ) (NUC (PRT ))))):1.0
+3	some		(NP* (OP-DEF <>)):1.0
+4	books		(NP (N <>)):1.0
+5	up		(PRT <>):1.0
+6	which		(NP-REL (PRO-REL <>)):1.0
+7	were		(CORE* (OP-TNS <>)):1.0
+8	lying		(CLAUSE (NP#WRAP# (TO-REMOVE (NP ))) (CLAUSE-PERI (PrCS (NP-REL )) (CORE (NUC (V <>))))):1.0
+9	who		(NP-REL (PRO-REL <>)):1.0
+10	wanted		(CLAUSE (NP#WRAP# (TO-REMOVE (NP ))) (CLAUSE-PERI (PrCS (NP-REL )) (CORE (NUC (V <>))))):1.0
+

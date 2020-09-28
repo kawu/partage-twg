@@ -5,7 +5,7 @@
 -- | Testing the automata-based Earley-style TAG parser.
 
 
-module Parser where
+module Unit where
 
 
 import           Control.Applicative     ((<$>))
@@ -19,7 +19,7 @@ import qualified Data.Map                as M
 import qualified Data.Text               as Txt
 import           Data.Maybe              (maybeToList)
 
-import qualified Pipes                   as P
+-- import qualified Pipes                   as P
 
 import qualified NLP.Partage.AStar       as A
 import qualified NLP.Partage.AStar.Parsed as A
@@ -28,12 +28,12 @@ import qualified NLP.Partage.DAG         as DAG
 import qualified NLP.Partage.Earley      as E
 import qualified NLP.Partage.Tree.Other  as O
 
-import qualified TestSet                 as T
+import qualified UnitTestSet                 as T
 
 
 -- | All the tests of the parsing algorithm.
-testEarley :: TestTree
-testEarley =
+unitTestEarley :: TestTree
+unitTestEarley =
   T.testTree "Earley" parser
   where
     parser = T.dummyParser
@@ -54,8 +54,8 @@ testEarley =
 
 
 -- | All the tests of the parsing algorithm.
-testAStar :: TestTree
-testAStar =
+unitTestAStar :: TestTree
+unitTestAStar =
   T.testTree "A*" parser
   where
     parser = T.dummyParser

@@ -16,28 +16,29 @@ import           Data.Maybe (catMaybes)
 import           Options.Applicative
 import qualified Data.Attoparsec.Text as Atto
 import           Data.Ord (comparing)
-import qualified Data.IORef as IORef
+-- import qualified Data.IORef as IORef
 import qualified Data.Char as C
 import qualified Data.List as List
 import qualified Data.Foldable as F
 import           Data.Monoid (Sum(..))
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
-import qualified Data.Vector as V
-import qualified Data.Tree as R
+-- import qualified Data.Vector as V
+-- import qualified Data.Tree as R
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.IO as LIO
-import qualified Data.MemoCombinators as Memo
+-- import qualified Data.MemoCombinators as Memo
 
 import qualified Data.Time as Time
-import qualified Pipes as P
+-- import qualified Pipes as P
 
 import qualified NLP.Partage.Tree.Other as O
 import qualified NLP.Partage.DAG as DAG
 import qualified NLP.Partage.AStar as A
-import qualified NLP.Partage.AStar.Chart as C
+import qualified NLP.Partage.AStar.IO as A
+-- import qualified NLP.Partage.AStar.Chart as C
 import qualified NLP.Partage.AStar.Deriv as D
 import qualified NLP.Partage.AStar.Deriv.Gorn as DG
 import qualified NLP.Partage.Earley as E
@@ -78,25 +79,7 @@ data Command
       , maxLen :: Maybe Int
       }
     -- ^ Parse the input sentences using the Earley-style chart parser
-    | AStar
-      { inputPath :: Maybe FilePath
-      , verbosity :: Int
-        -- ^ Verbosity level
-      , maxTags :: Maybe Int
-      , maxDeps :: Maybe Int
-      , minProb :: Maybe Double
-      , betaParam :: Maybe Double
-      , startSym :: S.Set T.Text
-      , fullHype :: Bool
-      , maxLen :: Maybe Int
-      , fullParse :: Bool
-      -- , brackets :: Bool
-      , showParses :: Int
-      , showParseNum :: Maybe Int
-      , allDerivs :: Bool
-      , useSoftMax :: Bool
---       , checkRepetitions :: Bool
-      }
+    | AStar A.AStarCommand
     -- ^ Parse the input sentences using the Earley-style A* chart parser
     | Dummy
       { inputPath :: Maybe FilePath
@@ -182,11 +165,16 @@ earleyOptions = Earley
 
 
 astarOptions :: Parser Command
-astarOptions = AStar
+astarOptions = fmap AStar $ A.AStarCommand
   <$> (optional . strOption)
   ( long "input"
     <> short 'i'
     <> help "Input file with supertagging results"
+  )
+  <*> (optional . strOption)
+  ( long "output"
+    <> short 'o'
+    <> help "Output file"
   )
   <*> option auto
   ( long "verbosity"
@@ -428,142 +416,7 @@ run cmd =
         putStrLn ""
 
 
-    AStar{..} -> do
-
-      -- Read input supertagging file
-      let parseSuper = Br.parseSuperProb
-          filterLen =
-            case maxLen of
-              Nothing -> id
-              Just ml -> filter ((<=ml) . length)
-      super <-
-          filterLen
-        . limitTagsProb minProb
-        . limitDepsProb minProb
-        . limitTagsBeta betaParam
-        . limitDepsBeta betaParam
-        . limitDepsNum maxDeps
-        . limitTagsNum maxTags
-        . parseSuper
-        <$> readInput inputPath
-
-      forM_ super $ \sent -> do
-
-        let
-          -- Add token IDs in order to distinguish tokens with identical word
-          -- forms (which may have different supertags)
-          input = zip [0 :: Int ..] (map Br.tokWord sent)
-          inputVect = V.fromList (map Br.tokWord sent)
-
-          -- Calculate the position map (mapping from tokens to their
-          -- positions)
-          posMap = M.fromList [(x, fst x) | x <- input]
-
-          -- Create the corresponding dependency map
-          depMap = mkDepMap' useSoftMax $ zip [0 :: Int ..] sent
-
-          -- Create the compressed grammar representation
-          gram
-            = DAG.mkGram
-            . anchorTags
-            . zip [0 :: Int ..]
-            $ sent
-          automat =
-            A.mkAuto
-              memoTerm gram (A.fromList input) posMap depMap
-          memoTerm = Memo.wrap
-            (\i -> (i, inputVect V.! i))
-            (\(i, _w) -> i)
-            Memo.integral
-
-        -- Check against the gold file or perform simple recognition
-        when (verbosity > 0) $ do
-          putStr "# SENT: "
-          TIO.putStrLn . T.unwords $ map snd input
-          putStr "# LENGTH: "
-          print $ length input
-
-        begTime <- Time.getCurrentTime
-        hypeRef <- IORef.newIORef Nothing
-        let n = length input
-            consume = do
-              A.HypeModif{..} <- P.await
-              case (modifType, modifItem) of
-                (A.NewNode, A.ItemP p) ->
-                  -- if (D.isFinal_ modifHype startSym n p) then do
-                  if (C.isFinal startSym n (A.automat modifHype) p) then do
-                    P.liftIO $ do
-                      semiTime <- Time.getCurrentTime
-                      IORef.modifyIORef hypeRef $ \case
-                        Nothing -> Just (modifHype, semiTime)
-                        Just x  -> Just x
---                     semiTime <- P.liftIO Time.getCurrentTime
---                     P.liftIO . IORef.writeIORef hypeRef $ Just (modifHype, semiTime)
-                    if fullHype
-                      then consume
-                      else return modifHype
-                  else consume
-                _ -> consume
-        finalHype <- A.earleyAutoP automat (A.fromList input) consume
-        endTime <- Time.getCurrentTime
-        (semiHype, semiTime) <- maybe (finalHype, endTime) id
-          <$> IORef.readIORef hypeRef
-        when (verbosity > 0) $ do
---           let reco = (not.null) (A.finalFrom startSym n semiHype)
---           putStr "# RECO: "
---           print reco
-          putStr "# ARCS: "
-          putStr (show n)
-          putStr "\t"
-          putStr (show $ A.hyperEdgesNum semiHype)
-          putStr "\t"
-          putStr $ show (semiTime `Time.diffUTCTime` begTime)
-          if fullHype then do
-            putStr "\t"
-            putStr (show $ A.hyperEdgesNum finalHype)
-            putStr "\t"
-            print (endTime `Time.diffUTCTime` begTime)
-          else do
-            putStrLn ""
-
-        -- Calculating derivations
-        let getDerivs () =
-              if allDerivs
-                 then D.derivTreesAllW finalHype startSym (length input)
-                 else D.derivTreesW finalHype startSym (length input)
-
-        -- Calculate the derivations
-        let derivs = getDerivs ()
-        when (null derivs) $ do
-          putStr "# NO PARSE FOR: "
-          TIO.putStrLn . T.unwords $ map snd input
-
-        case showParseNum of
-          Nothing -> return ()
-          Just _k -> do
-            error "not implemented"
---             putStr "# PARSE NUM: "
---             putStrLn . show $ sum
---               -- Evaluate the trees to avoid the memory leak
---               [ L.length txtTree `seq` (1 :: Int)
---               | (deriv, _weight) <- take k (getDerivs ())
---               , let txtTree = showParse deriv
---               ]
-
-        -- Print a single best derivation 
-        forM_ (take showParses derivs) $ \(deriv, w) -> do
-          if fullParse
-             then renderParse deriv >> putStrLn ""
-             else renderDeriv deriv
-          when (verbosity > 0) $ do
-            putStrLn $ "# WEIGHT: " ++ show w
-            when (verbosity > 1) $ do
-              putStrLn
-                . R.drawTree . fmap show
-                . D.deriv4show . D.normalize
-                $ deriv
-            -- putStrLn ""
-        putStrLn ""
+    AStar cm -> A.processCommand cm
 
 --     AStar{..} -> do
 -- 
