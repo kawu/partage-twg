@@ -9,8 +9,8 @@ import Test.Tasty (TestTree, testGroup, localOption)
 import Test.Tasty.Runners (TestTree)
 import qualified Test.Tasty.Golden as G
 
-import qualified NLP.Partage.AStar.IO as A
-import           NLP.Partage.AStar.IO (AStarCommand(..))
+import qualified NLP.Partage.AStar.Command as A
+import           NLP.Partage.AStar.Command (AStarCommand(..))
 
 
 -- | Full symbolic parsing tests; looking at parsed output

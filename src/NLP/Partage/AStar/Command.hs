@@ -7,7 +7,7 @@
 -- | IO for the A* parsing mode
 
 
-module NLP.Partage.AStar.IO
+module NLP.Partage.AStar.Command
   ( AStarCommand (..)
   , defAStarCommand
   , processCommand

@@ -37,7 +37,7 @@ import qualified Data.Time as Time
 import qualified NLP.Partage.Tree.Other as O
 import qualified NLP.Partage.DAG as DAG
 import qualified NLP.Partage.AStar as A
-import qualified NLP.Partage.AStar.IO as A
+import qualified NLP.Partage.AStar.Command as A
 -- import qualified NLP.Partage.AStar.Chart as C
 import qualified NLP.Partage.AStar.Deriv as D
 import qualified NLP.Partage.AStar.Deriv.Gorn as DG
