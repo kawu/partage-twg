@@ -1463,8 +1463,8 @@ testTree modName TagParser{..} = testGroup modName $ do
 
     showTree :: Tr -> T.Text
     showTree = L.toStrict . Br.showTree . fmap process . O.unTree
-    process (O.Term (Just t)) = O.Term . Just . T.pack $ show t
-    process (O.Term Nothing) = O.Term Nothing
+    process (O.Term (Just t)) = O.Term . Br.Term . Just . T.pack $ show t
+    process (O.Term Nothing) = O.Term (Br.Term Nothing)
     process (O.NonTerm x) = O.NonTerm x
     process (O.Sister x) = O.Sister x
     process (O.DNode x) = O.DNode x

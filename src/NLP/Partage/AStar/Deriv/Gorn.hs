@@ -37,8 +37,6 @@ import qualified NLP.Partage.Tree.Other  as O
 data Deriv n t = Deriv
   { rootET :: O.Tree n (Maybe t)
     -- ^ Root (elementary tree, ET) of the derivation tree
-    -- (reminder: using the `rootET` name because it doesn't stem from
-    --  the type the the root is an ET)
   , modifs :: M.Map Path [Deriv n t]
     -- ^ Derivations attached to the individual nodes (specified by the
     -- corresponding Gorn addresses) of the root ET; note that, in case of

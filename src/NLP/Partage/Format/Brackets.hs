@@ -62,7 +62,7 @@ type NonTerm = T.Text
 -- | Terminal or anchor
 data Term
   = Term (Maybe T.Text)
-      -- ^ `Nothing` represent an empty terminal
+      -- ^ `Nothing` represents an empty terminal
   | Anchor
   deriving (Show, Eq, Ord)
 
@@ -333,12 +333,12 @@ parseDeph str
 -------------------------------------------------------------
 
 
--- | Render the given lexicalized tree in the bracketed format.
-showTree :: LexTree -> L.Text
+-- | Render the given tree in the bracketed format.
+showTree :: Tree -> L.Text
 showTree = B.toLazyText . buildTree
 
 
-buildTree :: LexTree -> B.Builder
+buildTree :: Tree -> B.Builder
 buildTree tree
   | isTerm (R.rootLabel tree) =
       buildLabel (R.rootLabel tree)
@@ -350,23 +350,27 @@ buildTree tree
       ]
 
 
-buildForest :: [LexTree] -> B.Builder
+buildForest :: [Tree] -> B.Builder
 buildForest =
   mconcat . map (mappend " " . buildTree)
   -- mconcat . intersperse " " . map buildTree
 
 
-buildLabel :: O.Node NonTerm (Maybe T.Text) -> B.Builder
+buildLabel :: O.Node NonTerm Term -> B.Builder
+-- buildLabel :: O.Node NonTerm (Maybe T.Text) -> B.Builder
 buildLabel = \case
   O.NonTerm x -> B.fromText x
-  O.Term (Just x) -> B.fromText x
-  O.Term Nothing -> "-NONE-" -- B.fromText 
+  -- O.Term (Just x) -> B.fromText x
+  -- O.Term Nothing -> "-NONE-" -- B.fromText
+  O.Term (Term (Just x)) -> B.fromText x
+  O.Term (Term Nothing)  -> "-NONE-"
+  O.Term Anchor -> "<>"
   O.Sister x -> B.fromText x `mappend` "*"
   O.DNode x -> B.fromText x `mappend` "#WRAP#"
 --   O.Foot x -> B.fromText x `mappend` "*"
 
 
-isTerm :: O.Node NonTerm (Maybe T.Text) -> Bool
+isTerm :: O.Node NonTerm a -> Bool
 isTerm = \case
   O.Term _ -> True
   _ -> False

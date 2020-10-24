@@ -558,7 +558,7 @@ run cmd =
     Dummy{..} -> do
       super <- Br.parseSuperProb <$> readInput inputPath
       forM_ super $ \sent -> do
-        renderInput $ zip [1 :: Int ..] sent
+        renderBest $ zip [1 :: Int ..] sent
         putStrLn ""
 
 
@@ -789,16 +789,16 @@ softMax m =
 
 
 -- | Render the given derivation.
-renderInput :: [(Int, Br.SuperTok)] -> IO ()
-renderInput inp = do
+renderBest :: [(Int, Br.SuperTok)] -> IO ()
+renderBest inp = do
   forM_ inp $ \(tokID, Br.SuperTok{..}) -> do
     let takeBest df xs = 
           case List.sortBy (comparing snd) xs of
             [] -> df
             ys -> fst . head $ reverse ys
         depHed = takeBest (-1) (M.toList tokDeph)
-        supTag = Br.anchor tokWord $
-          takeBest (error "renderInput: no supertags") tokTags
+        -- supTag = Br.anchor tokWord $
+        supTag = takeBest (error "renderBest: no supertags") tokTags
     LIO.putStr . L.pack . show $ tokID
     LIO.putStr "\t"
     LIO.putStr $ L.fromStrict tokWord
@@ -834,7 +834,7 @@ renderDeriv deriv0 = do
         maybe ["0"] (map getPos . S.toList) $
           M.lookup tok depMap
     LIO.putStr "\t"
-    LIO.putStrLn . Br.showTree $ fmap rmTokID et
+    LIO.putStrLn . Br.showTree $ fmap (term2anchor . rmTokID) et
 
 
 -- | Render the given derivation.
@@ -851,7 +851,7 @@ showParse deriv
   . check
   $ parse
   where
-    showIt = Br.showTree . fmap rmTokID'
+    showIt = Br.showTree . fmap (dummyAnchor . rmTokID')
     -- parse = fst $ D.toParse deriv
     parse = D.toParse deriv
     check t =
@@ -920,8 +920,30 @@ remove :: Int -> [a] -> [a]
 remove k xs = take k xs ++ drop (k+1) xs
 
 
+-- | Replace all non-empty terminals with anchors.
+-- FIXME: also defined in AStar.Command!
+term2anchor :: O.Node n (Maybe T.Text) -> O.Node n Br.Term
+term2anchor = \case
+  O.Term (Just _) -> O.Term Br.Anchor
+  O.Term Nothing -> O.Term (Br.Term Nothing)
+  O.NonTerm x -> O.NonTerm x
+  O.Sister x -> O.Sister x
+  O.DNode x -> O.DNode x
+
+
+-- | Cast the type of the terminal node to account for anchors.  Do not insert
+-- any anchors, though.
+-- FIXME: also defined in AStar.Command!
+dummyAnchor :: O.Node n (Maybe T.Text) -> O.Node n Br.Term
+dummyAnchor = \case
+  O.Term x -> O.Term (Br.Term x)
+  O.NonTerm x -> O.NonTerm x
+  O.Sister x -> O.Sister x
+  O.DNode x -> O.DNode x
+
+
 -- | Remove info about token IDs.
--- rmTokID :: O.Node n (Maybe (Int, t)) -> O.Node n (Maybe t)
+-- FIXME: also defined in AStar.Command!
 rmTokID :: O.Node n (Maybe (Int, t)) -> O.Node n (Maybe t)
 rmTokID = \case
   O.Term (Just (_, x)) -> O.Term (Just x)
@@ -933,6 +955,7 @@ rmTokID = \case
 
 
 -- | Remove info about token IDs.
+-- FIXME: also defined in AStar.Command!
 rmTokID' :: O.Node n (Maybe (A.Tok (Int, t))) -> O.Node n (Maybe t)
 rmTokID' = \case
   -- O.Term tok -> O.Term . snd $ A.terminal tok

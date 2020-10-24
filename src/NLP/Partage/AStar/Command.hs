@@ -501,7 +501,7 @@ renderDeriv hOut deriv0 = do
         maybe ["0"] (map getPos . S.toList) $
           M.lookup tok depMap
     LIO.hPutStr hOut "\t"
-    LIO.hPutStrLn hOut . Br.showTree $ fmap rmTokID et
+    LIO.hPutStrLn hOut . Br.showTree $ fmap (term2anchor . rmTokID) et
 
 
 -- | Render the given derivation.
@@ -518,7 +518,7 @@ showParse deriv
   . check
   $ parse
   where
-    showIt = Br.showTree . fmap rmTokID'
+    showIt = Br.showTree . fmap (dummyAnchor . rmTokID')
     -- parse = fst $ D.toParse deriv
     parse = D.toParse deriv
     check t =
@@ -582,13 +582,32 @@ getTok = S.fromList . catMaybes . O.project
 --------------------------------------------------
 
 
--- | Remove the k-th element in the list.
-remove :: Int -> [a] -> [a]
-remove k xs = take k xs ++ drop (k+1) xs
+-- -- | Remove the k-th element in the list.
+-- remove :: Int -> [a] -> [a]
+-- remove k xs = take k xs ++ drop (k+1) xs
+
+
+-- | Replace all non-empty terminals with anchors.
+term2anchor :: O.Node n (Maybe T.Text) -> O.Node n Br.Term
+term2anchor = \case
+  O.Term (Just _) -> O.Term Br.Anchor
+  O.Term Nothing -> O.Term (Br.Term Nothing)
+  O.NonTerm x -> O.NonTerm x
+  O.Sister x -> O.Sister x
+  O.DNode x -> O.DNode x
+
+
+-- | Cast the type of the terminal node to account for anchors.  Do not insert
+-- any anchors, though.
+dummyAnchor :: O.Node n (Maybe T.Text) -> O.Node n Br.Term
+dummyAnchor = \case
+  O.Term x -> O.Term (Br.Term x)
+  O.NonTerm x -> O.NonTerm x
+  O.Sister x -> O.Sister x
+  O.DNode x -> O.DNode x
 
 
 -- | Remove info about token IDs.
--- rmTokID :: O.Node n (Maybe (Int, t)) -> O.Node n (Maybe t)
 rmTokID :: O.Node n (Maybe (Int, t)) -> O.Node n (Maybe t)
 rmTokID = \case
   O.Term (Just (_, x)) -> O.Term (Just x)
@@ -611,6 +630,6 @@ rmTokID' = \case
 --   O.Foot x -> O.Foot x
 
 
--- | Remove the repeating elements from the input list.
-nub :: Ord a => [a] -> [a]
-nub = S.toList . S.fromList
+-- -- | Remove the repeating elements from the input list.
+-- nub :: Ord a => [a] -> [a]
+-- nub = S.toList . S.fromList

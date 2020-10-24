@@ -33,14 +33,10 @@ type Pos = Int
 
 
 -- | Input of the parser.
-newtype Input t = Input {
-    -- inputSent :: V.Vector (S.Set t)
-      inputSent :: [Tok t]
-      -- ^ The input sentence
-      -- WARNING: some functions (notably, `Deriv.tokenize`) assume
-      -- that the input is a sequence, and not a word-lattice, for
-      -- example.
-    }
+newtype Input t = Input
+  { inputSent :: [Tok t]
+    -- ^ The input sentence
+  }
 
 
 -- | A token is a terminal enriched with information about the position
