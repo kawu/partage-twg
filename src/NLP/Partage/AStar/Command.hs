@@ -489,6 +489,7 @@ renderDeriv hOut deriv0 = do
       tagMap = tagsFromDeriv deriv
       depMap = depsFromDeriv deriv
       getPos = L.pack . show . (+1) . A.position
+      addProb x = L.append x ":1.0"
       getTerm = L.fromStrict . snd . A.terminal
   forM_ (M.toList tagMap) $ \(tok, et) -> do
     LIO.hPutStr hOut . L.intercalate "," $
@@ -497,11 +498,11 @@ renderDeriv hOut deriv0 = do
     LIO.hPutStr hOut . L.intercalate "," $
       map getTerm (S.toList tok)
     LIO.hPutStr hOut "\t"
-    LIO.hPutStr hOut . L.intercalate "," $
-        maybe ["0"] (map getPos . S.toList) $
+    LIO.hPutStr hOut . L.intercalate "|" $
+        maybe ["0:1.0"] (map (addProb . getPos) . S.toList) $
           M.lookup tok depMap
     LIO.hPutStr hOut "\t"
-    LIO.hPutStrLn hOut . Br.showTree $ fmap (term2anchor . rmTokID) et
+    LIO.hPutStrLn hOut . addProb . Br.showTree $ fmap (term2anchor . rmTokID) et
 
 
 -- | Render the given derivation.

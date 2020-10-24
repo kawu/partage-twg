@@ -799,66 +799,14 @@ renderBest inp = do
         depHed = takeBest (-1) (M.toList tokDeph)
         -- supTag = Br.anchor tokWord $
         supTag = takeBest (error "renderBest: no supertags") tokTags
+        addProb x = L.append x ":1.0"
     LIO.putStr . L.pack . show $ tokID
     LIO.putStr "\t"
     LIO.putStr $ L.fromStrict tokWord
     LIO.putStr "\t"
-    LIO.putStr . L.pack . show $ depHed
+    LIO.putStr . addProb . L.pack $ show depHed
     LIO.putStr "\t"
-    LIO.putStrLn $ Br.showTree supTag
-
-
---------------------------------------------------
--- Rendering derivation
---------------------------------------------------
-
-
--- | Render the given derivation.
-renderDeriv 
-  :: D.Deriv D.UnNorm T.Text (A.Tok (Int, T.Text))
-  -> IO ()
-renderDeriv deriv0 = do
-  let deriv = DG.fromDeriv deriv0
-      tagMap = tagsFromDeriv deriv
-      depMap = depsFromDeriv deriv
-      getPos = L.pack . show . (+1) . A.position
-      getTerm = L.fromStrict . snd . A.terminal
-  forM_ (M.toList tagMap) $ \(tok, et) -> do
-    LIO.putStr . L.intercalate "," $
-      map getPos (S.toList tok)
-    LIO.putStr "\t"
-    LIO.putStr . L.intercalate "," $
-      map getTerm (S.toList tok)
-    LIO.putStr "\t"
-    LIO.putStr . L.intercalate "," $
-        maybe ["0"] (map getPos . S.toList) $
-          M.lookup tok depMap
-    LIO.putStr "\t"
-    LIO.putStrLn . Br.showTree $ fmap (term2anchor . rmTokID) et
-
-
--- | Render the given derivation.
-renderParse :: D.Deriv D.UnNorm T.Text (A.Tok (Int, T.Text)) -> IO ()
-renderParse = LIO.putStr . showParse
-
-
--- | Render the given derivation.
-showParse 
-  :: D.Deriv D.UnNorm T.Text (A.Tok (Int, T.Text))
-  -> L.Text
-showParse deriv
-  = showIt
-  . check
-  $ parse
-  where
-    showIt = Br.showTree . fmap (dummyAnchor . rmTokID')
-    -- parse = fst $ D.toParse deriv
-    parse = D.toParse deriv
-    check t =
-      let posList = map A.position (catMaybes $ O.project t) in
-      if posList == List.sort posList
-         then t
-         else error "partage.showParse: words not in order!"
+    LIO.putStrLn . addProb $ Br.showTree supTag
 
 
 --------------------------------------------------
