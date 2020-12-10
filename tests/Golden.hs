@@ -45,29 +45,28 @@ symParse inpFile outFile = do
     }
 
 
--- | A* parsing with verbose output tests
-goldenVerboseTests :: IO TestTree
-goldenVerboseTests = do
-  inpFiles <- G.findByExtension [".inp"] "./tests/golden/astar"
-  -- return . localOption G.Never $ testGroup "A* golden symbolic tests"
-  return $ testGroup "A* golden verbose tests"
+-- | A* parsing with weight tests
+goldenWeightTests :: IO TestTree
+goldenWeightTests = do
+  inpFiles <- G.findByExtension [".inp"] "./tests/golden/weight"
+  return $ testGroup "A* golden weight tests"
     [ G.goldenVsFile
         (takeBaseName inpFile) -- test name
         goldenFile -- golden file path
         outFile -- A* parsing output file path
-        (verboseParse inpFile outFile) -- action whose result is tested
+        (weightParse inpFile outFile) -- action whose result is tested
     | inpFile <- inpFiles
     , let outFile = replaceExtension inpFile ".out"
           goldenFile = replaceExtension inpFile ".golden"
     ]
 
 
--- | Perform verbose parsing with the A* parser
-verboseParse
+-- | Perform weight parsing with the A* parser
+weightParse
   :: FilePath -- ^ Input file
   -> FilePath -- ^ Output file
   -> IO ()
-verboseParse inpFile outFile = do
+weightParse inpFile outFile = do
   A.processCommand A.defAStarCommand
     { inputPath = Just inpFile
     , outputPath = Just outFile

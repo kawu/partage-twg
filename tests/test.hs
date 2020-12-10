@@ -8,7 +8,7 @@ import qualified Golden
 main :: IO ()
 main = do
   goldenSymTests <- Golden.goldenSymTests
-  goldenVerboseTests <- Golden.goldenVerboseTests
+  goldenWeightTests <- Golden.goldenWeightTests
   defaultMain $
     testGroup "Tests" $
       [ testGroup "Unit"
@@ -17,5 +17,5 @@ main = do
         ]
       , testGroup "Golden"
         [ goldenSymTests
-        , goldenVerboseTests ]
+        , goldenWeightTests ]
       ]

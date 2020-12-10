@@ -1419,8 +1419,9 @@ tryDeactivatePrim q qw = void $ P.runListT $ do
       finalWeight = DuoWeight
         { duoBeta = duoBeta qw + treeWeight  -- + headCost
         , duoGap = duoGap qw }
+
   -- lift $ pushPassive p finalWeight (Deactivate q headCost)
-  lift $ pushPassive p finalWeight (DeactivatePrim q 0)
+  lift $ pushPassive p finalWeight (DeactivatePrim q treeWeight)
 #ifdef CheckMonotonic
   totalQ <- lift . lift $ est2total qw <$> estimateDistA q
   totalP <- lift . lift $ est2total finalWeight <$> estimateDistP p
