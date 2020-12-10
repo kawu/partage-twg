@@ -84,7 +84,7 @@ defAStarCommand = AStarCommand
   , maxLen = Nothing
   , fullParse = False
   , keepAllArcs = True
-  , showParses = 0
+  , showParses = 1
   , showParseNum = Nothing
   , allDerivs = False
   , useSoftMax = False
@@ -163,7 +163,7 @@ processCommand AStarCommand {..} = do
         hPutStr hOut "# LENGTH: "
         hPutStrLn hOut . show $ length input
 
-      begTime <- Time.getCurrentTime
+      _begTime <- Time.getCurrentTime
       hypeRef <- IORef.newIORef Nothing
       let n = length input
           consume = do
@@ -187,7 +187,7 @@ processCommand AStarCommand {..} = do
               _ -> consume
       finalHype <- A.earleyAutoP automat (A.mkInput keepAllArcs input) consume
       endTime <- Time.getCurrentTime
-      (semiHype, semiTime) <-
+      (semiHype, _semiTime) <-
         maybe (finalHype, endTime) id
           <$> IORef.readIORef hypeRef
       when (verbosity > 0) $ do
@@ -195,17 +195,17 @@ processCommand AStarCommand {..} = do
         --       hPutStr hOut "# RECO: "
         --       hPutStrLn hOut . show reco
         hPutStr hOut "# ARCS: "
-        hPutStr hOut (show n)
-        hPutStr hOut "\t"
+        -- hPutStr hOut (show n)
+        -- hPutStr hOut "\t"
         hPutStr hOut (show $ A.hyperEdgesNum semiHype)
-        hPutStr hOut "\t"
-        hPutStr hOut $ show (semiTime `Time.diffUTCTime` begTime)
+        -- hPutStr hOut "\t"
+        -- hPutStr hOut $ show (semiTime `Time.diffUTCTime` begTime)
         if fullHype
           then do
             hPutStr hOut "\t"
-            hPutStr hOut (show $ A.hyperEdgesNum finalHype)
-            hPutStr hOut "\t"
-            hPutStrLn hOut . show $ endTime `Time.diffUTCTime` begTime
+            hPutStrLn hOut (show $ A.hyperEdgesNum finalHype)
+            -- hPutStr hOut "\t"
+            -- hPutStrLn hOut . show $ endTime `Time.diffUTCTime` begTime
           else do
             hPutStrLn hOut ""
 

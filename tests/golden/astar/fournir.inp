@@ -1,0 +1,20 @@
+1	Il	3:1.0	(NP (PRO <>)):1.0
+2	y	3:1.0	(ADVP (PRO-CLT <>)):1.0
+3	avait	0:1.0	(SENTENCE (CLAUSE (CORE (NP) (ADVP) (NUC (V <>)) (NP)))):1.0
+4	toujours	3:1.0	(CORE* (ADVP-PERI (CORE_ADV (NUC_ADV (ADV <>))))):1.0
+5	quelque	6:1.0	(CORE_N* (AP-PERI (CORE_A (NUC_A (A <>))))):1.0
+6	article	3:1.0	(NP (CORE_N (NUC_N (N <>)) (PP))):1.0
+7	de	6:1.0	(PP (P <>) (NP)):1.0
+8	première	7:1.0	(NP (CORE_N (NUC_N (N <>)))):1.0
+9	nécessité	8:1.0	(NUC_N* (AP-PERI (CORE_A (NUC_A (A <>))))):1.0
+10	que	16:1.0	(NP-REL (PRO-REL <>)):1.0
+11	les	12:1.0	(NP* (OP-DEF <>)):1.0
+12	magasins	16:1.0	(NP (CORE_N (NUC_N (N <>)) (PP))):1.0
+13	du	12:1.0	(PP (P-DEF <>) (NP)):1.0
+14	Parti	13:1.0	(NP (CORE_N (NUC_N (N-PROP <>)))):1.0
+15	étaient	16:1.0	(NUC* (AUX-TNS <>)):1.0
+16	incapables	8:1.0	(NUC_N* (CLAUSE-PERI (PrCS (NP-REL)) (CORE (CORE (NP) (NUC (AP (CORE_A (NUC_A (A <>)))))) (CORE)))):1.0
+17	de	18:1.0	(CORE* (CLM <>)):1.0
+18	fournir	16:1.0	(CORE (NUC (V <>))):0.1	(CLAUSE-PERI (CORE#WRAP# (NUC (V <>)))):0.9
+19	.	3:1.0	(SENTENCE* (. <>)):1.0
+

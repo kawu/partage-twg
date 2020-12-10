@@ -43,3 +43,33 @@ symParse inpFile outFile = do
     , fullParse = True
     , showParses = 1000
     }
+
+
+-- | A* parsing with verbose output tests
+goldenVerboseTests :: IO TestTree
+goldenVerboseTests = do
+  inpFiles <- G.findByExtension [".inp"] "./tests/golden/astar"
+  -- return . localOption G.Never $ testGroup "A* golden symbolic tests"
+  return $ testGroup "A* golden verbose tests"
+    [ G.goldenVsFile
+        (takeBaseName inpFile) -- test name
+        goldenFile -- golden file path
+        outFile -- A* parsing output file path
+        (verboseParse inpFile outFile) -- action whose result is tested
+    | inpFile <- inpFiles
+    , let outFile = replaceExtension inpFile ".out"
+          goldenFile = replaceExtension inpFile ".golden"
+    ]
+
+
+-- | Perform verbose parsing with the A* parser
+verboseParse
+  :: FilePath -- ^ Input file
+  -> FilePath -- ^ Output file
+  -> IO ()
+verboseParse inpFile outFile = do
+  A.processCommand A.defAStarCommand
+    { inputPath = Just inpFile
+    , outputPath = Just outFile
+    , verbosity = 1
+    }
