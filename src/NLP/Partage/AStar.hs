@@ -18,6 +18,7 @@ module NLP.Partage.AStar
   Input (..)
 , Tok (..)
 , fromList
+, mkInput
 -- , fromSets
 
 -- ** From a factorized grammar
@@ -440,10 +441,11 @@ saveActive
     => Active n
     -> ExtWeight n t
     -> Earley n t ()
-saveActive p ts =
+saveActive p ts = do
+  kaa <- RWS.asks keepAllArcs
   RWS.modify' $ \h ->
     let lhsMap = lhsNonTerm (automat h)
-    in  h {chart = Chart.saveActive lhsMap p ts (chart h)}
+    in  h {chart = Chart.saveActive kaa lhsMap p ts (chart h)}
 
 
 -- | Check if, for the given active item, the given transitions are already
@@ -475,9 +477,10 @@ savePassive
     => Passive n t
     -> ExtWeight n t
     -> Earley n t ()
-savePassive p ts = RWS.state $
-  \h ->
-    let newChart = Chart.savePassive p ts (automat h) (chart h)
+savePassive p ts = do
+  kaa <- RWS.asks keepAllArcs
+  RWS.state $ \h ->
+    let newChart = Chart.savePassive kaa p ts (automat h) (chart h)
     in ((), h {chart = newChart})
 
 
@@ -507,6 +510,7 @@ pushActive :: (SOrd t, SOrd n)
            -> Maybe (Trav n t) -- ^ Traversal leading to the new item (if any)
            -> EarleyPipe n t ()
 pushActive p newWeight newTrav = do
+  kaa <- RWS.asks keepAllArcs
   estDist <- lift $ estimateDistA p
   let new = case newTrav of
         Just trav -> extWeight  newWeight estDist trav
@@ -526,16 +530,18 @@ pushActive p newWeight newTrav = do
           , modifType = NewArcs
           , modifItem = ItemA p
           , modifTrav = new }
-    False -> modify' $ \s -> s {waiting = newWait new (waiting s)}
-  where
-    newWait = Q.insertWith joinExtWeight (ItemA p)
+    False ->
+      let newWait = Q.insertWith (joinExtWeight kaa) (ItemA p)
+       in modify' $ \s -> s {waiting = newWait new (waiting s)}
 #ifdef DebugOn
+  where
     track estWeight = do
       hype <- RWS.get
       P.liftIO $ do
         putStr ">A>  " >> printActive p hype
         putStr " :>  " >> print (newWeight, estWeight)
 #else
+  where
     track _ = return ()
 #endif
 
@@ -553,6 +559,7 @@ pushPassive p newWeight0 newTrav0 = do
   -- In case the item is final, we add the remaining costs (e.g., the cost
   -- of attaching the corresponding tree to the dummy root node)
   sentLen <- length <$> RWS.asks inputSent
+  kaa <- RWS.asks keepAllArcs
   auto <- RWS.gets automat
   -- the extra cost to add
   extra <-
@@ -597,16 +604,18 @@ pushPassive p newWeight0 newTrav0 = do
           , modifType = NewArcs
           , modifItem = ItemP p
           , modifTrav = new }
-    False -> modify' $ \s -> s {waiting = newWait new (waiting s)}
-  where
-    newWait = Q.insertWith joinExtWeight (ItemP p)
+    False ->
+      let newWait = Q.insertWith (joinExtWeight kaa) (ItemP p)
+      in modify' $ \s -> s {waiting = newWait new (waiting s)}
 #ifdef DebugOn
+  where
     track newWeight estWeight = do
       hype <- RWS.get
       P.liftIO $ do
         putStr ">P>  " >> printPassive p hype
         putStr " :>  " >> print (newWeight, estWeight)
 #else
+  where
     track _ _ = return ()
 #endif
 

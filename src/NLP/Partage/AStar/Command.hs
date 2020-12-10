@@ -60,6 +60,7 @@ data AStarCommand = AStarCommand
     fullHype :: Bool,
     maxLen :: Maybe Int,
     fullParse :: Bool,
+    keepAllArcs :: Bool,
     -- brackets :: Bool
     showParses :: Int,
     showParseNum :: Maybe Int,
@@ -82,6 +83,7 @@ defAStarCommand = AStarCommand
   , fullHype = False
   , maxLen = Nothing
   , fullParse = False
+  , keepAllArcs = True
   , showParses = 0
   , showParseNum = Nothing
   , allDerivs = False
@@ -145,7 +147,7 @@ processCommand AStarCommand {..} = do
             A.mkAuto
               memoTerm
               gram
-              (A.fromList input)
+              (A.mkInput keepAllArcs input)
               posMap
               depMap
           memoTerm =
@@ -183,7 +185,7 @@ processCommand AStarCommand {..} = do
                       else return modifHype
                   else consume
               _ -> consume
-      finalHype <- A.earleyAutoP automat (A.fromList input) consume
+      finalHype <- A.earleyAutoP automat (A.mkInput keepAllArcs input) consume
       endTime <- Time.getCurrentTime
       (semiHype, semiTime) <-
         maybe (finalHype, endTime) id

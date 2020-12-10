@@ -222,6 +222,10 @@ astarOptions = fmap AStar $ A.AStarCommand
     <> short 'p'
     <> help "Show the full output parse tree"
   )
+  <*> flag True False
+  ( long "best-arcs-only"
+    <> help "Keep only the best incoming arcs"
+  )
 --   <*> switch
 --   ( long "brackets"
 --     <> short 'b'

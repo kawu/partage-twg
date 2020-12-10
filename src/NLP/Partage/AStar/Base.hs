@@ -5,6 +5,7 @@ module NLP.Partage.AStar.Base
   , Input (..)
   , Tok (..)
   , fromList
+  , mkInput
   -- * Utils
   -- , nonTerm
   , nonTerm'
@@ -32,10 +33,11 @@ type Pos = Int
 --------------------------------------------------
 
 
--- | Input of the parser.
-newtype Input t = Input
+-- | Input+configuration of the parser.
+data Input t = Input
   { inputSent :: [Tok t]
     -- ^ The input sentence
+  , keepAllArcs :: Bool
   }
 
 
@@ -57,8 +59,13 @@ instance Ord (Tok t) where
 
 -- | Construct `Input` from a list of terminals.
 fromList :: [t] -> Input t
-fromList = Input . map (uncurry Tok) . zip [0..]
--- fromList = fromSets . map S.singleton
+fromList = mkInput True
+
+
+-- | Construct `Input` from a list of terminals and info about
+-- whether all arcs should be preserved.
+mkInput :: Bool -> [t] -> Input t
+mkInput kaa = flip Input kaa . map (uncurry Tok) . zip [0..]
 
 
 --------------------------------------------------

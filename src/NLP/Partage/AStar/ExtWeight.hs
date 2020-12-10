@@ -288,21 +288,41 @@ extWeight p est trav =
 --
 joinExtWeight
     :: (Ord n, Ord t)
-    => ExtWeight n t
+    => Bool -- ^ Save all arcs
     -> ExtWeight n t
     -> ExtWeight n t
-joinExtWeight x y = if estWeight x /= estWeight y
+    -> ExtWeight n t
+joinExtWeight False x y = if estWeight x /= estWeight y
   then error "joinExtWeight: estimation costs differ!"
   else ExtWeight
        { priWeight = minWeight (priWeight x) (priWeight y)
        , estWeight = estWeight x
        , gapWeight = minWeightMap (gapWeight x) (gapWeight y)
-       , prioTrav  = S.union (prioTrav x) (prioTrav y) }
+       , prioTrav  = S.fromList $
+           case (S.toList (prioTrav x), S.toList (prioTrav y)) of
+             ([t1], [t2]) ->
+               if _weight t1 <= _weight t2
+               then [t1]
+               else [t2]
+             ([t1], []) -> [t1]
+             ([], [t2]) -> [t2]
+             ([], []) -> []
+             _ -> error "joinExtWeight: no traversals!"
+       }
+joinExtWeight True x y = if estWeight x /= estWeight y
+  then error "joinExtWeight: estimation costs differ!"
+  else ExtWeight
+       { priWeight = minWeight (priWeight x) (priWeight y)
+       , estWeight = estWeight x
+       , gapWeight = minWeightMap (gapWeight x) (gapWeight y)
+       , prioTrav  = S.union (prioTrav x) (prioTrav y)
+       }
 
 
 joinExtWeight'
     :: (Ord n, Ord t)
-    => ExtWeight n t
+    => Bool -- ^ Save all arcs
+    -> ExtWeight n t
     -> ExtWeight n t
     -> ExtWeight n t
 joinExtWeight' = joinExtWeight

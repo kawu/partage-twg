@@ -219,14 +219,15 @@ isProcessedA p =
 
 -- | Mark the active item as processed (`done').
 saveActive
-    :: (Ord t, Ord n)
-    => M.Map ID (NotFoot n) -- ^ See `lhsNonTerm` from `Auto`
-    -> Active n
-    -> ExtWeight n t
-    -> Chart n t
-    -> Chart n t
-saveActive lhsMap p ts
-  = modL' doneActive (M.insertWith joinExtWeight' p ts)
+  :: (Ord t, Ord n)
+  => Bool -- ^ Save all arcs
+  -> M.Map ID (NotFoot n) -- ^ See `lhsNonTerm` from `Auto`
+  -> Active n
+  -> ExtWeight n t
+  -> Chart n t
+  -> Chart n t
+saveActive saveAllArcs lhsMap p ts
+  = modL' doneActive (M.insertWith (joinExtWeight' saveAllArcs) p ts)
   . modL' expectEndIndex (updateWith p)
   . modL' plainRootEndIndex (updateWith p)
 
@@ -272,13 +273,14 @@ isProcessedP x auto =
 -- | Mark the passive item as processed (`done').
 savePassive
   :: (Ord t, Ord n)
-  => Passive n t
+  => Bool -- ^ Save all arcs
+  -> Passive n t
   -> ExtWeight n t
   -> Auto n t
   -> Chart n t
   -> Chart n t
-savePassive p ts _auto
-  = modL' donePassive (M.insertWith joinExtWeight' p ts)
+savePassive saveAllArcs p ts _auto
+  = modL' donePassive (M.insertWith (joinExtWeight' saveAllArcs) p ts)
   . modL' provideBegIndex (updateWith p)
   . modL' rootSpanIndex (updateWith p)
   . modL' provideBegIniIndex (updateWith p)
