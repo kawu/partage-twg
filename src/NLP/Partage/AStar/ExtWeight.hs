@@ -292,23 +292,6 @@ joinExtWeight
     -> ExtWeight n t
     -> ExtWeight n t
     -> ExtWeight n t
-joinExtWeight False x y = if estWeight x /= estWeight y
-  then error "joinExtWeight: estimation costs differ!"
-  else ExtWeight
-       { priWeight = minWeight (priWeight x) (priWeight y)
-       , estWeight = estWeight x
-       , gapWeight = minWeightMap (gapWeight x) (gapWeight y)
-       , prioTrav  = S.fromList $
-           case (S.toList (prioTrav x), S.toList (prioTrav y)) of
-             ([t1], [t2]) ->
-               if _weight t1 <= _weight t2
-               then [t1]
-               else [t2]
-             ([t1], []) -> [t1]
-             ([], [t2]) -> [t2]
-             ([], []) -> []
-             _ -> error "joinExtWeight: no traversals!"
-       }
 joinExtWeight True x y = if estWeight x /= estWeight y
   then error "joinExtWeight: estimation costs differ!"
   else ExtWeight
@@ -317,6 +300,38 @@ joinExtWeight True x y = if estWeight x /= estWeight y
        , gapWeight = minWeightMap (gapWeight x) (gapWeight y)
        , prioTrav  = S.union (prioTrav x) (prioTrav y)
        }
+joinExtWeight False x y
+  | estWeight x /= estWeight y =
+      error "joinExtWeight: estimation costs differ!"
+  | xPriW <= yPriW && xGapW <= yGapW = x
+  | xPriW > yPriW && xGapW > yGapW = y
+  | xPriW <= yPriW && xGapW > yGapW =
+      error "joinExtWeight: assumption 1 broken!"
+  | xPriW > yPriW && xGapW <= yGapW =
+      error "joinExtWeight: assumption 2 broken!"
+  | otherwise =
+      error "joinExtWeight: assumption 3 broken!"
+--    | otherwise = ExtWeight
+--        { priWeight = minWeight (priWeight x) (priWeight y)
+--        , estWeight = estWeight x
+--        , gapWeight = minWeightMap (gapWeight x) (gapWeight y)
+--        , prioTrav  = S.fromList $
+--            case (S.toList (prioTrav x), S.toList (prioTrav y)) of
+--              ([t1], [t2]) ->
+--                if _weight t1 <= _weight t2
+--                then [t1]
+--                else [t2]
+--              ([t1], []) -> [t1]
+--              ([], [t2]) -> [t2]
+--              ([], []) -> []
+--              _ -> error "joinExtWeight: no traversals!"
+--        }
+  where
+    xPriW = priWeight x
+    yPriW = priWeight y
+    xGapW = (sum . M.elems) (gapWeight x)
+    yGapW = (sum . M.elems) (gapWeight y)
+
 
 
 joinExtWeight'
