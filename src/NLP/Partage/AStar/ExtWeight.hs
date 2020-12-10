@@ -303,14 +303,13 @@ joinExtWeight True x y = if estWeight x /= estWeight y
 joinExtWeight False x y
   | estWeight x /= estWeight y =
       error "joinExtWeight: estimation costs differ!"
-  | xPriW <= yPriW && xGapW <= yGapW = x
-  | xPriW > yPriW && xGapW > yGapW = y
-  | xPriW <= yPriW && xGapW > yGapW =
-      error "joinExtWeight: assumption 1 broken!"
-  | xPriW > yPriW && xGapW <= yGapW =
-      error "joinExtWeight: assumption 2 broken!"
-  | otherwise =
-      error "joinExtWeight: assumption 3 broken!"
+  | priWeight x < priWeight y = x
+      { gapWeight = minWeightMap (gapWeight x) (gapWeight y) }
+  | priWeight x > priWeight y = y
+      { gapWeight = minWeightMap (gapWeight x) (gapWeight y) }
+  | otherwise = x
+      { gapWeight = minWeightMap (gapWeight x) (gapWeight y)
+      , prioTrav  = S.union (prioTrav x) (prioTrav y) }
 --    | otherwise = ExtWeight
 --        { priWeight = minWeight (priWeight x) (priWeight y)
 --        , estWeight = estWeight x
@@ -326,11 +325,6 @@ joinExtWeight False x y
 --              ([], []) -> []
 --              _ -> error "joinExtWeight: no traversals!"
 --        }
-  where
-    xPriW = priWeight x
-    yPriW = priWeight y
-    xGapW = (sum . M.elems) (gapWeight x)
-    yGapW = (sum . M.elems) (gapWeight y)
 
 
 
