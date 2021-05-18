@@ -184,8 +184,12 @@ listActive = M.toList . _doneActive
 -- | Number of chart nodes.
 doneNodesNum :: Chart n t -> Int
 doneNodesNum e
-    = length (listPassive e)
-    + length (listActive e)
+    = M.size (_donePassive e)
+    + M.size (_doneActive e)
+-- UPDATE 18.05.2021: replaced the old, slow version (commented out below) with
+-- a fast one
+--     = length (listPassive e)
+--     + length (listActive e)
 
 
 -- | Number of edges outgoing from the nodes in the underlying chart.

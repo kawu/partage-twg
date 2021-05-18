@@ -226,6 +226,10 @@ astarOptions = fmap AStar $ A.AStarCommand
   ( long "best-arcs-only"
     <> help "Keep only the best incoming arcs"
   )
+  <*> (optional . option auto)
+  ( long "max-chart-size"
+    <> help "Maximum chart size"
+  )
 --   <*> switch
 --   ( long "brackets"
 --     <> short 'b'

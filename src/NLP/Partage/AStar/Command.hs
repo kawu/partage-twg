@@ -61,6 +61,7 @@ data AStarCommand = AStarCommand
     maxLen :: Maybe Int,
     fullParse :: Bool,
     keepAllArcs :: Bool,
+    maxChartSize :: Maybe Int,
     -- brackets :: Bool
     showParses :: Int,
     showParseNum :: Maybe Int,
@@ -84,6 +85,7 @@ defAStarCommand = AStarCommand
   , maxLen = Nothing
   , fullParse = False
   , keepAllArcs = True
+  , maxChartSize = Nothing
   , showParses = 1
   , showParseNum = Nothing
   , allDerivs = False
@@ -147,7 +149,7 @@ processCommand AStarCommand {..} = do
             A.mkAuto
               memoTerm
               gram
-              (A.mkInput keepAllArcs input)
+              (A.mkInput keepAllArcs maxChartSize input)
               posMap
               depMap
           memoTerm =
@@ -185,7 +187,7 @@ processCommand AStarCommand {..} = do
                       else return modifHype
                   else consume
               _ -> consume
-      finalHype <- A.earleyAutoP automat (A.mkInput keepAllArcs input) consume
+      finalHype <- A.earleyAutoP automat (A.mkInput keepAllArcs maxChartSize input) consume
       endTime <- Time.getCurrentTime
       (semiHype, _semiTime) <-
         maybe (finalHype, endTime) id

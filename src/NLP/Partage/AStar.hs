@@ -395,7 +395,10 @@ doneNodesNum e = Chart.doneNodesNum (chart e)
 
 -- | Number of waiting nodes in the parsing hypergraph.
 waitingNodesNum :: (Ord n, Ord t) => Hype n t -> Int
-waitingNodesNum = length . listWaiting
+waitingNodesNum = Q.size . waiting
+-- UPDATE 18.05.2021: replaced the old, slow version (commented out below) with
+-- a fast one
+-- waitingNodesNum = length . listWaiting
 
 
 -- | Number of nodes in the parsing hypergraph.
@@ -403,7 +406,7 @@ hyperNodesNum :: (Ord n, Ord t) => Hype n t -> Int
 hyperNodesNum e = doneNodesNum e + waitingNodesNum e
 
 
--- | Number of nodes in the parsing hypergraph.
+-- | Number of edges in the parsing hypergraph.
 doneEdgesNum :: (Ord n, Ord t) => Hype n t -> Int
 doneEdgesNum e = Chart.doneEdgesNum (chart e)
 
@@ -2384,7 +2387,24 @@ earleyAutoGen =
             putStr "POP: " >> printItem item hype
             putStr " :>  " >> print (priWeight e, gapWeight e, estWeight e)
 #endif
-          step p >> loop
+          chartSizeLimitOK >>= \case
+            True -> step p >> loop
+            False -> RWS.get
+
+
+--------------------------------------------------
+-- Chart size limit check
+--------------------------------------------------
+
+
+-- | Verify if the chart size limit has not been exceeded
+chartSizeLimitOK :: (Ord n, Ord t) => EarleyPipe n t Bool
+chartSizeLimitOK = do
+  RWS.asks maxChartSize >>= \case
+    Nothing -> return True
+    Just mcs -> do
+      cs <- hyperNodesNum <$> RWS.get
+      return $ cs <= mcs
 
 
 --------------------------------------------------

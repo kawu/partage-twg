@@ -38,6 +38,9 @@ data Input t = Input
   { inputSent :: [Tok t]
     -- ^ The input sentence
   , keepAllArcs :: Bool
+    -- ^ Keep all hyper-arcs or only the single-best ones
+  , maxChartSize :: Maybe Int
+    -- ^ Upper limit on the size of the chart (if any)
   }
 
 
@@ -59,13 +62,16 @@ instance Ord (Tok t) where
 
 -- | Construct `Input` from a list of terminals.
 fromList :: [t] -> Input t
-fromList = mkInput True
+fromList = mkInput True Nothing
 
 
--- | Construct `Input` from a list of terminals and info about
--- whether all arcs should be preserved.
-mkInput :: Bool -> [t] -> Input t
-mkInput kaa = flip Input kaa . map (uncurry Tok) . zip [0..]
+-- | Construct `Input` from a list of terminals, info about whether all arcs
+-- should be preserved, and (optional) limit on the size of the chart.
+mkInput :: Bool -> Maybe Int -> [t] -> Input t
+mkInput kaa sizeLimit =
+    inp . map (uncurry Tok) . zip [0..]
+    where
+      inp xs = Input xs kaa sizeLimit
 
 
 --------------------------------------------------
