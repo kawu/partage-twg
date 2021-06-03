@@ -106,7 +106,7 @@ checkSuperTok tokTxt tok@SuperTok{..} =
   where
     checkProb _   [] = id
     checkProb typ xs =
-      assert typ (sum xs >= 0.1) .
+      assert typ (sum xs >= 0.01) .
       assert typ (all (>=0.0) xs) .
       assert typ (all (<=1.0) xs)
     assert typ cond x
