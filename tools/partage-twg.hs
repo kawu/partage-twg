@@ -218,9 +218,13 @@ astarOptions = fmap AStar $ A.AStarCommand
     <> help "Limit on sentence length"
   )
   <*> switch
-  ( long "full-parse"
+  ( long "show-parse"
     <> short 'p'
-    <> help "Show the full output parse tree"
+    <> help "Show the full output parse tree(s)"
+  )
+  <*> flag True False
+  ( long "hide-deriv"
+    <> help "Hide the output derivation(s)"
   )
   <*> flag True False
   ( long "best-arcs-only"

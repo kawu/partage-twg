@@ -16,7 +16,7 @@ where
 
 import System.IO (stdout, withFile, Handle, IOMode(WriteMode), hPutStrLn, hPutStr)
 
-import Control.Monad (forM_, when, guard)
+import Control.Monad (forM_, when, guard, unless)
 import qualified Control.Arrow as Arr
 import qualified Data.Foldable as F
 import qualified Data.IORef as IORef
@@ -59,12 +59,13 @@ data AStarCommand = AStarCommand
     startSym :: S.Set T.Text,
     fullHype :: Bool,
     maxLen :: Maybe Int,
-    fullParse :: Bool,
+    showParses :: Bool,
+    showDerivs :: Bool,
     keepAllArcs :: Bool,
     maxChartSize :: Maybe Int,
     -- brackets :: Bool
-    showParses :: Int,
-    showParseNum :: Maybe Int,
+    limitParses :: Int,
+    printParseNum :: Maybe Int,
     allDerivs :: Bool,
     useSoftMax :: Bool
     -- checkRepetitions :: Bool
@@ -83,11 +84,12 @@ defAStarCommand = AStarCommand
   , startSym = S.empty
   , fullHype = False
   , maxLen = Nothing
-  , fullParse = False
+  , showParses = False
+  , showDerivs = True
   , keepAllArcs = True
   , maxChartSize = Nothing
-  , showParses = 1
-  , showParseNum = Nothing
+  , limitParses = 1
+  , printParseNum = Nothing
   , allDerivs = False
   , useSoftMax = False
   }
@@ -223,7 +225,7 @@ processCommand AStarCommand {..} = do
         hPutStr hOut "# NO PARSE FOR: "
         TIO.hPutStrLn hOut . T.unwords $ map snd input
 
-      case showParseNum of
+      case printParseNum of
         Nothing -> return ()
         Just _k -> do
           error "not implemented"
@@ -236,10 +238,11 @@ processCommand AStarCommand {..} = do
       --           ]
 
       -- Print a single best derivation
-      forM_ (take showParses derivs) $ \(deriv, w) -> do
-        if fullParse
-          then renderParse hOut deriv >> hPutStrLn hOut ""
-          else renderDeriv hOut deriv
+      forM_ (take limitParses derivs) $ \(deriv, w) -> do
+        when showDerivs $
+          renderDeriv hOut deriv
+        when showParses $
+          renderParse hOut deriv >> hPutStrLn hOut ""
         when (verbosity > 0) $ do
           hPutStrLn hOut $ "# WEIGHT: " ++ show w
           when (verbosity > 1) $ do

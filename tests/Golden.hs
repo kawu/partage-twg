@@ -40,8 +40,9 @@ symParse inpFile outFile = do
     { inputPath = Just inpFile
     , outputPath = Just outFile
     , fullHype = True
-    , fullParse = True
-    , showParses = 1000
+    , showParses = True
+    , showDerivs = False
+    , limitParses = 1000
     }
 
 
