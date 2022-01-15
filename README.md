@@ -174,7 +174,7 @@ Run `partage-twg astar --help` to learn more about the possible parsing options.
 
 #### Output representation
 
-You can retrieve the parsed (derived) trees instead of the selected supertags
+You can retrieve the parsed (derived) trees in addition to the selected supertags
 and dependency heads using the `-p` option:
 
     partage-twg astar -i test.tsv -p
